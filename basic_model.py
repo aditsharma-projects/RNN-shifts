@@ -1,16 +1,16 @@
 from numpy import genfromtxt
 import tensorflow as tf
 import numpy as np
-data = genfromtxt('/users/facsupport/asharma/Data/batches/8/one.csv',delimiter=',')
+data = genfromtxt('/users/facsupport/asharma/Data/batches/15/one.csv',delimiter=',')
 
 train_set = data[0:int(2*len(data)/3)]
 test_set = data[int(2*len(data)/3):]
 
 def make_traindata(set):
-    examples = set[:,:7]
-    labels = set[:,7:8]
-    means = set[:,8:9]
-    stds = set[:,9:10]
+    examples = set[:,:14]
+    labels = set[:,14:15]
+    #means = set[:,8:9]
+    #stds = set[:,9:10]
 
     return tf.data.Dataset.from_tensor_slices((examples,labels))
 
@@ -23,8 +23,8 @@ train_dataset = train_dataset.batch(BATCH_SIZE)
 tf.keras.backend.set_floatx('float64')
 
 model = tf.keras.Sequential([
-    tf.keras.layers.LSTM(128),
-    tf.keras.layers.Dense(64),
+    tf.keras.layers.LSTM(64),
+    tf.keras.layers.Dense(32),
     tf.keras.layers.Dense(1)
 ])
 
@@ -40,19 +40,20 @@ for example, label in train_dataset:
         if loss.dtype == tf.int64:
             continue
         print("LOSS: "+str(loss))
+        testModel(test_set)
         gradients = tape.gradient(loss,model.trainable_variables)
         optimizer.apply_gradients(zip(gradients,model.trainable_variables))
 
 
 def testModel(testSet):
-    for entry in testSet:
-        seq = entry[:7]
+    for entry in testSet[0:2]:
+        seq = entry[:14]
         seq = np.array([[seq]])
         seq = np.transpose(seq, axes=[0, 2, 1])
 
-        label = entry[7:8]
-        mean = entry[8:9]
-        std = entry[9:10]
+        label = entry[14:15]
+        mean = entry[15:16]
+        std = entry[16:17]
         
         prediction = model(seq)
         prediction = (prediction*std)+mean
