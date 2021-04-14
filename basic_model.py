@@ -24,29 +24,15 @@ tf.keras.backend.set_floatx('float64')
 
 model = tf.keras.Sequential([
     tf.keras.layers.LSTM(64),
-    tf.keras.layers.Dense(32),
     tf.keras.layers.Dense(1)
 ])
 
-loss_object = tf.keras.losses.MeanAbsoluteError()
+loss_object = tf.keras.losses.MeanSquaredLogarithmicError()
 optimizer = tf.keras.optimizers.Adam(2e-6, beta_1=0.5)
-
-for example, label in train_dataset:
-    example = np.expand_dims(example,2)
-    label = np.expand_dims(label,2)
-    with tf.GradientTape() as tape:
-        prediction = model(example)
-        loss = loss_object(prediction,label)*BATCH_SIZE
-        if loss.dtype == tf.int64:
-            continue
-        print("LOSS: "+str(loss))
-        testModel(test_set)
-        gradients = tape.gradient(loss,model.trainable_variables)
-        optimizer.apply_gradients(zip(gradients,model.trainable_variables))
 
 
 def testModel(testSet):
-    for entry in testSet[0:2]:
+    for entry in testSet:
         seq = entry[:14]
         seq = np.array([[seq]])
         seq = np.transpose(seq, axes=[0, 2, 1])
@@ -54,10 +40,28 @@ def testModel(testSet):
         label = entry[14:15]
         mean = entry[15:16]
         std = entry[16:17]
-        
+
         prediction = model(seq)
         prediction = (prediction*std)+mean
         label = (label*std)+mean
         print("Prediction: "+str(prediction)+" True Value: "+str(label))
 
-        
+
+
+def train_epoch():
+ for example, label in train_dataset:
+     example = np.expand_dims(example,2)
+     label = np.expand_dims(label,2)
+     with tf.GradientTape() as tape:
+         prediction = model(example)
+         loss = loss_object(prediction,label)*BATCH_SIZE
+         if loss.dtype == tf.int64:
+             continue
+
+         #testModel(test_set[50:60])
+         gradients = tape.gradient(loss,model.trainable_variables)
+         if np.isnan(gradients[0].numpy())[0][0]:
+             continue
+         print("LOSS: "+str(loss))
+         optimizer.apply_gradients(zip(gradients,model.trainable_variables))
+
