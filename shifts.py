@@ -6,11 +6,11 @@ import tensorflow as tf
 # ========== SETTINGS ==========
 
 # Data input file
-FILE = '/users/facsupport/asharma/Data/pbj_full.csv'
+FILE = '/users/facsupport/asharma/Data/pbj_full.csv' and None
+ROWS_TO_READ = 10000
 
 # Set to None or '' to force preprocessing
 PREPROCESSED_FILE = 'data/preprocessed.csv'
-EMPLOYEES_TO_TAKE = 500
 
 # Weights to split data set
 TRAINING_WEIGHT = 0.7
@@ -38,8 +38,8 @@ if PREPROCESSED_FILE:
 
 if df is None:
     print("Loading data...")
-    raw_df = pd.read_csv(FILE)
-
+    raw_df = pd.read_csv(FILE, nrows = ROWS_TO_READ, dtype={'hours':'float64'}, parse_dates = ['date'])
+    
     print("Preprocessing data (this may take a few minutes)...")
 
     # Partition by employee id
@@ -47,9 +47,6 @@ if df is None:
 
     partitions = []
     for name, group in grouped:
-        if len(partitions) == EMPLOYEES_TO_TAKE:
-            break
-
         # Sort by date
         group = group.sort_values(by='date')
 
@@ -78,7 +75,7 @@ if df is None:
     df = pd.concat(partitions)
     
     print("Saving preprocessed data...")
-    df.to_csv('preprocessed.csv', index=False)
+    df.to_csv(PREPROCESSED_FILE, index=False)
 
 # We do "destructive" preprocessing (can't recover std, mean from normalized data) in local memory
 
@@ -276,6 +273,44 @@ lstm_model = tf.keras.models.Sequential([
     tf.keras.layers.Dense(units=1)
 ])
 
+
+
+print("Training LSTM model.")
+inputs_map = {}
+labels_map = {}
+
+for data, data_name in [(train_df, 'train'), (val_df, 'val'), (test_df, 'test')]:
+    grouped = data.groupby('employee_id')
+
+    inputs_size = 7
+    labels_size = 1
+    total_window_size = inputs_size + labels_size
+
+    inputs = []
+    labels = []
+
+    for name, group in grouped:
+        group = group.filter(['name', 'hours'])
+        data = np.array(group, dtype=np.float32)
+        for i in range(0, len(data) - total_window_size + 1):
+            inputs.append(data[i:i+inputs_size])
+            labels.append(data[i+inputs_size : i+total_window_size])
+
+    inputs = np.array(inputs)
+    labels = np.array(labels)
+
+    lstm_model.compile(loss=tf.losses.MeanSquaredError(),
+                        optimizer=tf.optimizers.Adam(),
+                        metrics=[tf.metrics.MeanAbsoluteError()])
+    
+    inputs_map[data_name] = labels
+    labels_map[data_name] = labels
+
+
+history=lstm_model.fit(inputs_map['train'], labels_map['train'])
+
+
+exit()
 print("Training LSTM model.")
 history = compile_and_fit(lstm_model, wide_window, verbose=VERBOSE_TRAINING)
 
