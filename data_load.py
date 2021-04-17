@@ -4,7 +4,7 @@ from numpy import genfromtxt
 from operator import itemgetter
 import matplotlib.pyplot as plt
 
-ONLYGENERATENUM = 15
+ONLYGENERATENUM = 31
 def dateIndex(date):    #indexing years starting at 2000, works for sure as long as records stop before 2100
     year = int(date[2:6]) - 2000
     month = int(date[7:9])
@@ -20,7 +20,7 @@ def dateIndex(date):    #indexing years starting at 2000, works for sure as long
     return int(num)
 
 ROWS = 100000000
-data = genfromtxt('/users/facsupport/asharma/Data/pbj_full.csv',delimiter=',', skip_header = 1+ROWS, dtype="i8,f8,i8,S10,S30,i8,S12",max_rows=ROWS)
+data = genfromtxt('/users/facsupport/asharma/Data/pbj_full.csv',delimiter=',', skip_header = 1, dtype="i8,f8,i8,S10,S30,i8,S12",max_rows=ROWS)
 print("LOADED DATA")
 list = []
 for x in range(0,len(data)):
@@ -87,4 +87,4 @@ for i in range(len(dataList)):
     dataFinal[i] = np.append(list,std)
 
 
-np.savetxt("/users/facsupport/asharma/Data/batches/15/two.csv",dataFinal,delimiter=",")
+np.savetxt("/users/facsupport/asharma/Data/batches/31/one.csv",dataFinal,delimiter=",")
