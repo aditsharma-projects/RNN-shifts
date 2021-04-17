@@ -4,8 +4,7 @@ from numpy import genfromtxt
 from operator import itemgetter
 import matplotlib.pyplot as plt
 
-ONLYGENERATE8 = False
-ONLYGENERATE15 = True
+ONLYGENERATENUM = 15
 def dateIndex(date):    #indexing years starting at 2000, works for sure as long as records stop before 2100
     year = int(date[2:6]) - 2000
     month = int(date[7:9])
@@ -21,7 +20,7 @@ def dateIndex(date):    #indexing years starting at 2000, works for sure as long
     return int(num)
 
 ROWS = 100000000
-data = genfromtxt('/users/facsupport/asharma/Data/pbj_full.csv',delimiter=',', skip_header = 1, dtype="i8,f8,i8,S10,S30,i8,S12",max_rows=ROWS)
+data = genfromtxt('/users/facsupport/asharma/Data/pbj_full.csv',delimiter=',', skip_header = 1+ROWS, dtype="i8,f8,i8,S10,S30,i8,S12",max_rows=ROWS)
 print("LOADED DATA")
 list = []
 for x in range(0,len(data)):
@@ -35,9 +34,7 @@ def gen_train_example(i,j): #listSorted[i] to listSorted[j-1] inclusive are the 
     dataPoints = sorted(listSorted[i:j],key=itemgetter(3))
     min = dataPoints[0][3]
     max = dataPoints[len(dataPoints)-1][3]
-    if max-min+1!=8 and ONLYGENERATE8:
-        return (False,None,None)
-    if max-min+1!=15 and ONLYGENERATE15:
+    if max-min+1!= ONLYGENERATENUM:
         return (False,None,None)
     output = []
     currIndex = 0
@@ -81,7 +78,7 @@ for i in range(0,len(dataList)):
     print(dataList[i])
 
 
-dataFinal = np.ndarray(shape=(len(dataList),17))
+dataFinal = np.ndarray(shape=(len(dataList),ONLYGENERATENUM+2))
 for i in range(len(dataList)):
     seq = dataList[i][0]
     mean = np.mean(seq)
@@ -90,4 +87,4 @@ for i in range(len(dataList)):
     dataFinal[i] = np.append(list,std)
 
 
-np.savetxt("/users/facsupport/asharma/Data/batches/15/one.csv",dataFinal,delimiter=",")
+np.savetxt("/users/facsupport/asharma/Data/batches/15/two.csv",dataFinal,delimiter=",")
