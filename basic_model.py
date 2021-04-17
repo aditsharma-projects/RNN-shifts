@@ -22,16 +22,17 @@ train_dataset = train_dataset.batch(BATCH_SIZE)
 
 tf.keras.backend.set_floatx('float64')
 
-model = tf.keras.Sequential([
-    tf.keras.layers.LSTM(64),
-    tf.keras.layers.Dense(1)
-])
+#model = tf.keras.Sequential([
+    #tf.keras.layers.LSTM(64),
+    #tf.keras.layers.Dense(32),
+    #tf.keras.layers.Dense(1)
+#])
 
-loss_object = tf.keras.losses.MeanSquaredLogarithmicError()
+loss_object = tf.keras.losses.MeanAbsoluteError()
 optimizer = tf.keras.optimizers.Adam(2e-6, beta_1=0.5)
 
 
-def testModel(testSet):
+def testModel(testSet, model):
     for entry in testSet:
         seq = entry[:14]
         seq = np.array([[seq]])
@@ -48,7 +49,8 @@ def testModel(testSet):
 
 
 
-def train_epoch():
+def train_epoch(model):
+ i = 0
  for example, label in train_dataset:
      example = np.expand_dims(example,2)
      label = np.expand_dims(label,2)
@@ -62,6 +64,8 @@ def train_epoch():
          gradients = tape.gradient(loss,model.trainable_variables)
          if np.isnan(gradients[0].numpy())[0][0]:
              continue
-         print("LOSS: "+str(loss))
+         i += 1
+         if i%1000 == 1:    
+            print("LOSS: "+str(loss))
          optimizer.apply_gradients(zip(gradients,model.trainable_variables))
 
