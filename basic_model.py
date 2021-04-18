@@ -1,10 +1,14 @@
 from numpy import genfromtxt
 import tensorflow as tf
 import numpy as np
-data = genfromtxt('/users/facsupport/asharma/Data/batches/31/one.csv',delimiter=',')
+data1 = genfromtxt('/users/facsupport/asharma/Data/batches/31/one.csv',delimiter=',')
+data2 = genfromtxt('/users/facsupport/asharma/Data/batches/31/two.csv',delimiter=',')
+data3 = genfromtxt('/users/facsupport/asharma/Data/batches/31/three.csv',delimiter=',')
+data4 = genfromtxt('/users/facsupport/asharma/Data/batches/31/four.csv',delimiter=',')
+data5 = genfromtxt('/users/facsupport/asharma/Data/batches/31/five.csv',delimiter=',')
 
-train_set = data[0:int(2*len(data)/3)]
-test_set = data[int(2*len(data)/3):]
+train_set = np.concatenate((data1,data2,data3,data5),axis=0)
+test_set = data4
 
 def make_traindata(set):
     examples = set[:,:30]
@@ -28,12 +32,15 @@ tf.keras.backend.set_floatx('float64')
     #tf.keras.layers.Dense(1)
 #])
 
-loss_object = tf.keras.losses.MeanAbsoluteError()
-optimizer = tf.keras.optimizers.Adam(2e-6, beta_1=0.5)
+loss_object = tf.keras.losses.MeanSquaredError()
+optimizer = tf.keras.optimizers.Adam(2e-4, beta_1=0.5)
 
 
 def testModel(testSet, model):
+    absError = 0
+    length = 0
     for entry in testSet:
+        
         seq = entry[:30]
         seq = np.array([[seq]])
         seq = np.transpose(seq, axes=[0, 2, 1])
@@ -46,6 +53,12 @@ def testModel(testSet, model):
         prediction = (prediction*std)+mean
         label = (label*std)+mean
         print("Prediction: "+str(prediction)+" True Value: "+str(label))
+        if np.isnan(abs(prediction-label)):
+            continue
+        length += 1
+        absError += abs(prediction-label)
+    print("Mean Absolute Error: "+str(absError/length))    
+    
 
 
 
@@ -57,7 +70,7 @@ def train_epoch(model):
      label = np.expand_dims(label,2)
      with tf.GradientTape() as tape:
          prediction = model(example)
-         loss = loss_object(prediction,label)*BATCH_SIZE
+         loss = loss_object(prediction,label)
          if loss.dtype == tf.int64:
              continue
 
@@ -70,5 +83,5 @@ def train_epoch(model):
          if i%1000 == 1:    
             print("LOSS: "+str(loss))
          optimizer.apply_gradients(zip(gradients,model.trainable_variables))
- print("NAN Count: "+str(nanCount))
-print()
+ print("NAN Count: "+str(nanCount)+" Successly trained batches: "+str(i))
+
