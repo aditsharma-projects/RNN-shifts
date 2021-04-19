@@ -6,11 +6,11 @@ import tensorflow as tf
 # ========== SETTINGS ==========
 
 # Data input file
-FILE = '/users/facsupport/asharma/Data/pbj_full.csv' and None
+FILE = '/users/facsupport/asharma/Data/pbj_full.csv'
 ROWS_TO_READ = 10000
 
-# Set to None or '' to force preprocessing
 PREPROCESSED_FILE = 'data/preprocessed.csv'
+FORCE_RELOAD_DATA = True
 
 # Weights to split data set
 TRAINING_WEIGHT = 0.7
@@ -29,7 +29,7 @@ tf.get_logger().setLevel('INFO') # todo: investigate warnings
 
 df = None
 
-if PREPROCESSED_FILE:
+if PREPROCESSED_FILE and not FORCE_RELOAD_DATA:
     try:
         print("Loading preprocessed data...")
         df = pd.read_csv(PREPROCESSED_FILE)
@@ -57,9 +57,12 @@ if df is None:
         i = 0
         orig_length = len(group)
         for i in range(len(group)):
+            row_copy = {key:value for key, value in group.iloc[0].items()}
+            row_copy['hours'] = 0
             # Catch date up to current index by filling in with cached rows
             while day < group.iloc[i]['date']:
-                group = group.append({'date': day, 'hours': 0}, ignore_index=True)
+                row_copy['date'] = day
+                group = group.append({key:value for key, value in row_copy.items()}, ignore_index=True)
                 day += pd.DateOffset(1)
 
             # Account for current index's day
@@ -134,8 +137,8 @@ class WindowGenerator():
     def split_window(self, features):
         inputs = features[:, self.input_slice, :]
         labels = features[:, self.labels_slice, :]
-        if self.label_columns is not None:
-            labels = tf.stack([labels[:, :, self.column_indices[name]] for name in self.label_columns],axis=-1)
+        # if self.label_columns is not None:
+        #     labels = tf.stack([labels[:, :, self.column_indices[name]] for name in self.label_columns],axis=-1)
         
         # Slicing doesn't preserve static shape information, so set the shapes
         # manually. This way the `tf.data.Datasets` are easier to inspect.
@@ -177,7 +180,7 @@ class WindowGenerator():
         concat_ds = None
         grouped = data.groupby('employee_id')
         for name, group in grouped:
-            group = group.filter(['name', 'hours'])
+            group = group.filter(['hours'])
             data = np.array(group, dtype=np.float32)
             if len(data) == 1:
                 continue
@@ -186,7 +189,7 @@ class WindowGenerator():
                 targets=None,
                 sequence_length=self.total_window_size,
                 sequence_stride=1,
-                shuffle=True,
+                shuffle=False,
                 batch_size=32,)
     
             ds = ds.map(self.split_window)
@@ -234,7 +237,7 @@ single_step_window = WindowGenerator(
     label_columns=['hours'])
 
 wide_window = WindowGenerator(
-    input_width=7, label_width=7, shift=1,
+    input_width=7, label_width=1, shift=1,
     label_columns=['hours'])
 
 LABEL_WIDTH = 24
@@ -275,42 +278,7 @@ lstm_model = tf.keras.models.Sequential([
 
 
 
-print("Training LSTM model.")
-inputs_map = {}
-labels_map = {}
 
-for data, data_name in [(train_df, 'train'), (val_df, 'val'), (test_df, 'test')]:
-    grouped = data.groupby('employee_id')
-
-    inputs_size = 7
-    labels_size = 1
-    total_window_size = inputs_size + labels_size
-
-    inputs = []
-    labels = []
-
-    for name, group in grouped:
-        group = group.filter(['name', 'hours'])
-        data = np.array(group, dtype=np.float32)
-        for i in range(0, len(data) - total_window_size + 1):
-            inputs.append(data[i:i+inputs_size])
-            labels.append(data[i+inputs_size : i+total_window_size])
-
-    inputs = np.array(inputs)
-    labels = np.array(labels)
-
-    lstm_model.compile(loss=tf.losses.MeanSquaredError(),
-                        optimizer=tf.optimizers.Adam(),
-                        metrics=[tf.metrics.MeanAbsoluteError()])
-    
-    inputs_map[data_name] = labels
-    labels_map[data_name] = labels
-
-
-history=lstm_model.fit(inputs_map['train'], labels_map['train'])
-
-
-exit()
 print("Training LSTM model.")
 history = compile_and_fit(lstm_model, wide_window, verbose=VERBOSE_TRAINING)
 
@@ -318,3 +286,47 @@ print("Evaluating LSTM model.")
 val_performance['LSTM'] = lstm_model.evaluate(wide_window.val, verbose=VERBOSE_TRAINING)
 performance['LSTM'] = lstm_model.evaluate(wide_window.test, verbose=0)
 
+
+
+
+
+
+
+
+
+
+
+if False: # manual window creation
+    print("Training LSTM model.")
+    inputs_map = {}
+    labels_map = {}
+
+    for data, data_name in [(train_df, 'train'), (val_df, 'val'), (test_df, 'test')]:
+        grouped = data.groupby('employee_id')
+
+        inputs_size = 7
+        labels_size = 1
+        total_window_size = inputs_size + labels_size
+
+        inputs = []
+        labels = []
+
+        for name, group in grouped:
+            group = group.filter(['name', 'hours'])
+            data = np.array(group, dtype=np.float32)
+            for i in range(0, len(data) - total_window_size + 1):
+                inputs.append(data[i:i+inputs_size])
+                labels.append(data[i+inputs_size : i+total_window_size])
+
+        inputs = np.array(inputs)
+        labels = np.array(labels)
+
+        lstm_model.compile(loss=tf.losses.MeanSquaredError(),
+                            optimizer=tf.optimizers.Adam(),
+                            metrics=[tf.metrics.MeanAbsoluteError()])
+        
+        inputs_map[data_name] = labels
+        labels_map[data_name] = labels
+
+
+    history=lstm_model.fit(inputs_map['train'], labels_map['train'])
