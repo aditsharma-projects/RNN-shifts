@@ -279,6 +279,24 @@ lstm_model = tf.keras.models.Sequential([
 
 
 
+dense = tf.keras.Sequential([
+    tf.keras.layers.Dense(units=64, activation='relu'),
+    tf.keras.layers.Dense(units=64, activation='relu'),
+    tf.keras.layers.Dense(units=1)
+])
+
+print()
+print("Training dense model.")
+history = compile_and_fit(dense, wide_window, verbose=VERBOSE_TRAINING)
+
+print("Evaluating dense model.")
+val_performance['Dense'] = dense.evaluate(wide_window.val, verbose=VERBOSE_TRAINING)
+performance['Dense'] = dense.evaluate(wide_window.test, verbose=0)
+
+
+
+
+
 print("Training LSTM model.")
 history = compile_and_fit(lstm_model, wide_window, verbose=VERBOSE_TRAINING)
 
