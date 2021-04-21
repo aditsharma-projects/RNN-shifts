@@ -55,7 +55,7 @@ test_df = df[split2:]
 # Create window generator
 window = WindowGenerator(
     train_df, val_df, test_df,
-    input_width=INPUT_WIDTH, label_width=LABEL_WIDTH, gap_width=GAP_WIDTH,
+    INPUT_WIDTH, LABEL_WIDTH, GAP_WIDTH,
     label_columns=['hours'])
 
 # %%
@@ -121,3 +121,8 @@ print()
 print("Evaluating LSTM model.")
 val_performance['LSTM'] = lstm_model.evaluate(window.val, verbose=VERBOSE_TRAINING)
 performance['LSTM'] = lstm_model.evaluate(window.test, verbose=0)
+
+print()
+print("Overall validation performance:")
+for model_name, (loss, mea) in val_performance.items():
+    print("%s %.4f loss, %.4f mean abs error (%.4f hours)" % ((model_name + ":").ljust(17), loss, mea, mea * std['hours']) )

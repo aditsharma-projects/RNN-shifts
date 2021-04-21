@@ -4,7 +4,7 @@ import tensorflow as tf
 import matplotlib.pyplot as plt
 
 class WindowGenerator():
-    def __init__(self, train_df, val_df, test_df, input_width, label_width, gap, label_columns=None):
+    def __init__(self, train_df, val_df, test_df, input_width, label_width, gap_width, label_columns=None):
         # Store the raw data.
         self.train_df = train_df
         self.val_df = val_df
