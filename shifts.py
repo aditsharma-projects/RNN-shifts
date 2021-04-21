@@ -2,15 +2,14 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 import tensorflow as tf
+from data_prep import initial_preprocess
 
 # ========== SETTINGS ==========
 
 # Data input file
-FILE = '/users/facsupport/asharma/Data/pbj_full.csv'
-ROWS_TO_READ = 10000
-
-PREPROCESSED_FILE = 'data/preprocessed.csv'
-FORCE_RELOAD_DATA = True
+RAW_DATA_PATH = '/users/facsupport/asharma/Data/pbj_full.csv'
+PREPROCESSED_DIR = '/users/facsupport/asharma/Data/prep/'
+ROWS_TO_READ = 1000
 
 # Weights to split data set
 TRAINING_WEIGHT = 0.7
@@ -22,74 +21,12 @@ MAX_EPOCHS = 20
 
 VERBOSE_TRAINING = 1
 
-tf.get_logger().setLevel('INFO') # todo: investigate warnings
-
-
-# ## Loading and Preprocessing
-
-df = None
-
-if PREPROCESSED_FILE and not FORCE_RELOAD_DATA:
-    try:
-        print("Loading preprocessed data...")
-        df = pd.read_csv(PREPROCESSED_FILE)
-    except FileNotFoundError:
-        print("Failed.")        
-
-if df is None:
-    print("Loading data...")
-    raw_df = pd.read_csv(FILE, nrows = ROWS_TO_READ, dtype={'hours':'float64'}, parse_dates = ['date'])
-    
-    print("Preprocessing data (this may take a few minutes)...")
-
-    # Partition by employee id
-    grouped = raw_df.groupby('employee_id')
-
-    partitions = []
-    for name, group in grouped:
-        # Sort by date
-        group = group.sort_values(by='date')
-
-        # Pad empty rows with 0 hours
-
-        day = min(group['date'])
-        last = None
-        i = 0
-        orig_length = len(group)
-        for i in range(len(group)):
-            row_copy = {key:value for key, value in group.iloc[0].items()}
-            row_copy['hours'] = 0
-            # Catch date up to current index by filling in with cached rows
-            while day < group.iloc[i]['date']:
-                row_copy['date'] = day
-                group = group.append({key:value for key, value in row_copy.items()}, ignore_index=True)
-                day += pd.DateOffset(1)
-
-            # Account for current index's day
-            day += pd.DateOffset(1)
-
-        group['date_int'] = group['date'].astype(np.int64)
-
-        # Sort by date with new rows
-        group = group.sort_values(by='date')
-
-        partitions.append(group)
-
-    df = pd.concat(partitions)
-    
-    print("Saving preprocessed data...")
-    df.to_csv(PREPROCESSED_FILE, index=False)
-
-# We do "destructive" preprocessing (can't recover std, mean from normalized data) in local memory
-
-# Normalize features
-means = {}
-stds = {}
-#df = df.filter(['hours', 'date_int'])
-for col in ['date_int', 'hours']:
-    means[col] = df[col].mean()
-    stds[col] = df[col].std()
-    df[col] = (df[col] - means[col]) / stds[col]
+df, info = initial_preprocess(
+    RAW_DATA_PATH, PREPROCESSED_DIR,
+    nrows=ROWS_TO_READ,
+    fill_missing_shifts=True,
+    normalize=True
+)
 
 # Split data into training/validation/test sets
 n = len(df)
