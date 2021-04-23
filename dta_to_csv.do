@@ -3,4 +3,4 @@ log using labels.txt, replace t
 label list
 log close
 label drop _all
-outsheet using "/mnt/staff/rtjoa/shifts/RNN-shifts/data/pbj_full.csv" , comma
+outsheet using "/export/storage_adgandhi/PBJ_data_prep/pbj_full.csv" , comma
