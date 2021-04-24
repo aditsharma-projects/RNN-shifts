@@ -2,6 +2,38 @@ import pandas as pd
 import numpy as np
 import pickle
 
+# Generates a dictionary from Stata log file in which 'labels list' is run
+# For some column and numerically encoded val, the decoded string is:
+# `labels_map[column][encoded_val]` (if labels_map is this function's output)
+def labels_list_to_dict(file):
+    f = open(file, "r")
+    started = False
+    labels_map = {} # labels_map[column][encoded_val] = decoded_string
+    col = None
+    for line in f:
+        line = line.strip()
+        if line == '. label list': # labels list command started
+            started = True
+            continue
+        elif not started: # wait for command start
+            continue
+        
+        if line == '': # labels list command ended
+            break
+        
+        if line[-1] == ':': # start of column
+            col = line[:-1]
+            labels_map[col] = {}
+        elif col is None:
+            print(line)
+            raise Exception("Error parsing input")
+        else:
+            tokens = line.split(' ')
+            encoded_val = int(tokens[0])
+            decoded_string = ' '.join(tokens[1:])
+            labels_map[col][encoded_val] = decoded_string
+    return labels_map
+
 # Generate deterministic file name from configuration
 def generate_file_names(preprocessed_dir, nrows, fill_missing_shifts, normalize):
     name = preprocessed_dir + 'pbj'
