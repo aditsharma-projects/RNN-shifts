@@ -1,10 +1,7 @@
-import tensorflow as tf
 import numpy as np
 from numpy import genfromtxt
 from operator import itemgetter
-import matplotlib.pyplot as plt
 import pandas as pd
-import os
 from os import path
 from data_prep import labels_list_to_dict
 from data_prep import label_mapping_dict
