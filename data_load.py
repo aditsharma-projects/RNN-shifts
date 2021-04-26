@@ -112,7 +112,7 @@ def helper_index(inTuple):
     return dateTuple[0]+(dateTuple[1] - 2015)*365
 
 def get_entry(i,j,listSorted):
-    dataPoints = sorted(listSorted[i:j],key=helper_index) #Issue, can't currently sort the date string
+    dataPoints = sorted(listSorted[i:j],key=helper_index) 
     min = dateIndex(dataPoints[0][2])
     max = dateIndex(dataPoints[len(dataPoints)-1][2])
     edge = 1
@@ -122,7 +122,6 @@ def get_entry(i,j,listSorted):
     #want to generate (0 padded) shifts for a single quarter
     shifts = []
     currIndex = 0
-    prefix = [0]
     for ind in range(min[0],max[0]+1):
         if dateIndex(dataPoints[currIndex][2])[0] == ind:
             shifts.append(dataPoints[currIndex][0])
