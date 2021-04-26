@@ -118,6 +118,7 @@ def get_entry(i,j,listSorted):
     edge = 1
     while max[1] != min[1]:
         max = dateIndex(dataPoints[len(dataPoints)-2*edge][2]) #makes things easier if only spanning one year
+        edge += 1
     #want to generate (0 padded) shifts for a single quarter
     shifts = []
     currIndex = 0
