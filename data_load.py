@@ -10,6 +10,7 @@ labels_map = labels_list_to_dict(labels_list_logfile)
 map_abbrev = label_mapping_dict("labelsToAbbrev.txt")
 
 ONLYGENERATENUM = 90
+
 def dateIndex(date):    #indexing years starting at 2000, works for sure as long as records stop before 2100
     date = str(date)
     year = int(date[7:11])
@@ -24,12 +25,25 @@ def dateIndex(date):    #indexing years starting at 2000, works for sure as long
     index += int(date[2:4])
     
     return (index,year)
+
+def date_to_quarter(dateTuple):
+    quarters = [90,91,92,92]
+    if dateTuple[1] % 4 == 0 and dateTuple[1] % 100 != 0:
+        quarters[0] += 1
+    total = 0
+    for i in range(4):
+        total += quarters[i]
+        if total > dateTuple[0]:
+            return (i+1,total-quarters[i],total)
+    return -1
+
 ROWS = 100000
 ###########################
 frame1 = None
 frame2 = None
 currQ = -1
 currY = -1
+#Loads the 2 csv's corresponding to quarter and year into pandas data frame objects
 def load_csvs(quarter,year):
     fileNurse = "/export/storage_adgandhi/PBJhours_ML/Data/Raw/PBJ_Public/Nurse/"+"PBJ_Daily_Nurse_Staffing_CY_"+ str(year) + "_Q" + str(quarter) + ".csv"
     if not path.exists(fileNurse):
@@ -52,7 +66,7 @@ def load_csvs(quarter,year):
     currY = year
     return 
 
-
+#Checks that current csv's match quarter/year, then extracts the correct column based on job id
 def get_facility_data(quarter,year,job,provNum,pay):
     provNum = labels_map['prov_id_label'][provNum]
     if provNum.isdigit():
@@ -89,11 +103,12 @@ def get_facility_data(quarter,year,job,provNum,pay):
         return np.zeros(90).tolist()
     return
 
+#returns (zero-padded) exactly one quarter of shift history for any input
 def one_quarter(seq,startDate):
     index, year = dateIndex(startDate)
-    quarter = int(index/90)+1
+    quarter,start,end = date_to_quarter((index,year))
     output = []
-    for day in range((quarter-1)*90,quarter*90+1):
+    for day in range(start,end):
         if day < index:
             output.append(0)
         elif day >= index + len(seq):
@@ -101,14 +116,16 @@ def one_quarter(seq,startDate):
         else:
             output.append(seq[day-index])
     
-    return (output,quarter,year)
+    return (output[0:90],quarter,year)
 
+#used to sort by date
 def helper_index(inTuple):
     op = itemgetter(2)
     dateString = op(inTuple)
     dateTuple = dateIndex(dateString)
     return dateTuple[0]+(dateTuple[1] - 2015)*365
 
+#returns 183 length sequence corresponding to a given worker
 def get_entry(i,j,listSorted):
     dataPoints = sorted(listSorted[i:j],key=helper_index) 
     min = dateIndex(dataPoints[0][2])
@@ -133,12 +150,14 @@ def get_entry(i,j,listSorted):
     payType = dataPoints[0][5]
     shifts,quarter,year = one_quarter(shifts,startDate)
     #print(quarter)
-    if quarter == 5:
+    if quarter == -1:
         return None
     if len(shifts)==0:
         return None
     
     facSequence = get_facility_data(quarter,year,jobTitle,providerId,payType)
+    if len(facSequence) != 90:
+        return None
     
     extraDescriptors = [jobTitle,providerId,payType]
     
@@ -179,7 +198,7 @@ def process_Data(data, ind):
     
     return
 
-offset = 0
+offset = 8
 data = genfromtxt('/export/storage_adgandhi/PBJ_data_prep/pbj_full.csv',delimiter=',',skip_header=1,dtype="f8,i8,S9,i8,i8,i8",max_rows=ROWS)
 
 while data.shape[0] != 0:
