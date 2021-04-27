@@ -27,7 +27,7 @@ def dateIndex(date):    #indexing years starting at 2000, works for sure as long
     index += int(date[2:4])
     
     return (index,year)
-ROWS = 1000000
+ROWS = 100000
 ###########################
 frame1 = None
 frame2 = None
@@ -60,7 +60,8 @@ def get_facility_data(quarter,year,job,provNum,pay):
     provNum = labels_map['prov_id_label'][provNum]
     if provNum.isdigit():
         provNum = int(provNum)
-        
+    else:
+        return np.zeros(90).tolist()
     job = labels_map['job_title_label'][job]
     if job != 'Diagnostic X-ray Service Worker':
         job = map_abbrev[job]
@@ -171,7 +172,7 @@ def process_Data(data, ind):
                 #print(sample.shape)
             
             lastStart = i
-        if i%1000000 == 0:
+        if i%10000 == 0:
             print(i)
     #print(len(dataList))
     #print(dataList[0].shape)
