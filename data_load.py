@@ -198,7 +198,7 @@ def process_Data(data, ind):
     
     return
 
-offset = 8
+offset = 33
 data = genfromtxt('/export/storage_adgandhi/PBJ_data_prep/pbj_full.csv',delimiter=',',skip_header=1,dtype="f8,i8,S9,i8,i8,i8",max_rows=ROWS)
 
 while data.shape[0] != 0:
