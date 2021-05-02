@@ -3,6 +3,7 @@ from numpy import genfromtxt
 from operator import itemgetter
 import pandas as pd
 from os import path
+from datetime import date as DATE
 from data_prep import labels_list_to_dict
 from data_prep import label_mapping_dict
 labels_list_logfile = '/mnt/staff/rtjoa/shifts/RNN-shifts/labels.txt'
@@ -11,21 +12,27 @@ map_abbrev = label_mapping_dict("labelsToAbbrev.txt")
 
 ONLYGENERATENUM = 90
 
-def dateIndex(date):    #indexing years starting at 2000, works for sure as long as records stop before 2100
+#parsing date string from pbj_full.csv into a few different useful data values 
+def dateIndex(date):    
     date = str(date)
     year = int(date[7:11])
     
     names = ["jan","feb","mar","apr","may","jun","jul","aug","sep","oct","nov","dec"]
     days = [31,28,31,30,31,30,31,31,30,31,30,31]
     index = 0
+    month = -1
+    day = int(date[2:4])
     for i in range(12):
         if names[i] == date[4:7]:
+            month = i+1
             break
         index += days[i]
-    index += int(date[2:4])
-    
-    return (index,year)
+    index += day
+    dayOfWeek = DATE(year,month,day).weekday()
+    #print(dayOfWeek)
+    return (index,year,dayOfWeek)
 
+#returns the corresponding quarter that an input date falls in
 def date_to_quarter(dateTuple):
     quarters = [90,91,92,92]
     if dateTuple[1] % 4 == 0 and dateTuple[1] % 100 != 0:
@@ -36,6 +43,15 @@ def date_to_quarter(dateTuple):
         if total > dateTuple[0]:
             return (i+1,total-quarters[i],total)
     return -1
+
+#returns a list of size 7, where list[0] = mean # hours on Monday and list[6] = mean # hours on Sunday
+def average_hours_by_day(seq,startDay):
+    totals = np.zeros(7)
+    numOccurances = np.zeros(7)
+    for i in range(len(seq)):
+        totals[(startDay+i)%7] += seq[i]
+        numOccurances[(startDay+i)%7] += 1
+    return list(totals/numOccurances)
 
 ROWS = 100000
 ###########################
@@ -66,7 +82,7 @@ def load_csvs(quarter,year):
     currY = year
     return 
 
-#Checks that current csv's match quarter/year, then extracts the correct column based on job id
+#Loads csv's matching quarter/year, filters out entries for current facility, then extracts the correct column based on job id
 def get_facility_data(quarter,year,job,provNum,pay):
     provNum = labels_map['prov_id_label'][provNum]
     if provNum.isdigit():
@@ -84,12 +100,8 @@ def get_facility_data(quarter,year,job,provNum,pay):
     mask1 = (frame1["PROVNUM"] == provNum)
     mask2 = (frame2["PROVNUM"] == provNum)
     
-    #print("PROVNUM " +str(provNum))
-    #print(type(provNum))
-    
     
     #extract the right column depending on worker type
-    #print(job)
     if job in frame1:
         seq = frame1[mask1][job].tolist()
         #print(seq)
@@ -105,18 +117,20 @@ def get_facility_data(quarter,year,job,provNum,pay):
 
 #returns (zero-padded) exactly one quarter of shift history for any input
 def one_quarter(seq,startDate):
-    index, year = dateIndex(startDate)
+    index, year, dayOfWeek = dateIndex(startDate)
     quarter,start,end = date_to_quarter((index,year))
     output = []
+    offset = 0
     for day in range(start,end):
         if day < index:
             output.append(0)
+            offset += 1
         elif day >= index + len(seq):
             output.append(0)
         else:
             output.append(seq[day-index])
     
-    return (output[0:90],quarter,year)
+    return (output[0:90],quarter,year,(dayOfWeek-offset)%7)
 
 #used to sort by date
 def helper_index(inTuple):
@@ -125,11 +139,12 @@ def helper_index(inTuple):
     dateTuple = dateIndex(dateString)
     return dateTuple[0]+(dateTuple[1] - 2015)*365
 
-#returns 183 length sequence corresponding to a given worker
+#returns 191 length sequence corresponding to a given worker
 def get_entry(i,j,listSorted):
     dataPoints = sorted(listSorted[i:j],key=helper_index) 
     min = dateIndex(dataPoints[0][2])
     max = dateIndex(dataPoints[len(dataPoints)-1][2])
+    #removing extra entries past 90 days
     edge = 1
     while max[1] != min[1]:
         max = dateIndex(dataPoints[len(dataPoints)-2*edge][2]) #makes things easier if only spanning one year
@@ -148,7 +163,7 @@ def get_entry(i,j,listSorted):
     jobTitle = dataPoints[0][3]
     providerId = dataPoints[0][4]
     payType = dataPoints[0][5]
-    shifts,quarter,year = one_quarter(shifts,startDate)
+    shifts,quarter,year,dayOfWeek = one_quarter(shifts,startDate)
     #print(quarter)
     if quarter == -1:
         return None
@@ -159,7 +174,8 @@ def get_entry(i,j,listSorted):
     if len(facSequence) != 90:
         return None
     
-    extraDescriptors = [jobTitle,providerId,payType]
+    meanHrsByDay = average_hours_by_day(shifts,dayOfWeek)
+    extraDescriptors = [jobTitle,providerId,payType,dayOfWeek] + meanHrsByDay
     
     #print(len(shifts))
     #print(len(facSequence))
@@ -167,7 +183,7 @@ def get_entry(i,j,listSorted):
     
     return shifts+facSequence+extraDescriptors
 
-def process_Data(data, ind):
+def process_Data(data, ind, labelsList):
     for row in data:
         row = tuple(row)
     data = data.tolist()
@@ -193,16 +209,31 @@ def process_Data(data, ind):
     #print(len(dataList))
     #print(dataList[0].shape)
     dataList = np.array(dataList)
+    #labels = np.reshape(np.array(labelsList),(1,191))
+    
+    df = pd.DataFrame(dataList)
+    df.to_csv("/users/facsupport/asharma/Data/Preprocessed/tmp/"+str(ind)+".csv",header = labelsList)
     #print(dataList.shape)
-    np.savetxt("/users/facsupport/asharma/Data/Preprocessed/"+str(ind)+".csv",np.array(dataList),delimiter=",")
+    #print(labels.shape)
+    #np.savetxt("/users/facsupport/asharma/Data/Preprocessed/tmp/"+str(ind)+".csv",np.concatenate((labels,dataList),axis=0),delimiter=",")
     
     return
 
-offset = 33
+offset = 0
 data = genfromtxt('/export/storage_adgandhi/PBJ_data_prep/pbj_full.csv',delimiter=',',skip_header=1,dtype="f8,i8,S9,i8,i8,i8",max_rows=ROWS)
 
+#Construct list of labels for processed csv
+labelsList = []
+for i in range(90):
+    labelsList.append("t_"+str(i))
+for i in range(90):
+    labelsList.append("f_"+str(i))
+labelsList += ["jobTitle","providerId","payType","dayOfWeek","Mon","Tue","Wed","Thu","Fri","Sat","Sun"]
+
+
+
 while data.shape[0] != 0:
-    process_Data(data,offset)
+    process_Data(data,offset,labelsList)
     offset += 1
     data = genfromtxt('/export/storage_adgandhi/PBJ_data_prep/pbj_full.csv',delimiter=',',skip_header=1+offset*ROWS,dtype="f8,i8,S9,i8,i8,i8",max_rows=ROWS)
     print("Processed and Saved "+str(offset*ROWS)+" data entries")
