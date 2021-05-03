@@ -4,12 +4,11 @@ from operator import itemgetter
 import pandas as pd
 from os import path
 from datetime import date as DATE
-from data_prep import labels_list_to_dict
-from data_prep import label_mapping_dict
+from data_prep import labels_list_to_dict, label_mapping_dict
 labels_list_logfile = '/mnt/staff/rtjoa/shifts/RNN-shifts/labels.txt'
 labels_map = labels_list_to_dict(labels_list_logfile)
 map_abbrev = label_mapping_dict("labelsToAbbrev.txt")
-
+###
 ONLYGENERATENUM = 90
 
 #parsing date string from pbj_full.csv into a few different useful data values 
