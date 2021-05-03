@@ -40,7 +40,7 @@ def date_to_quarter(dateTuple):
     for i in range(4):
         total += quarters[i]
         if total > dateTuple[0]:
-            return (i+1,total-quarters[i],total)
+            return (i+1,total-quarters[i]+1,total)
     return -1
 
 #returns a list of size 7, where list[0] = mean # hours on Monday and list[6] = mean # hours on Sunday
@@ -220,10 +220,10 @@ labelsList += ["jobTitle","providerId","payType","dayOfWeek","Mon","Tue","Wed","
 
 
 while data.shape[0] != 0:
-    #process_Data(data,offset,labelsList)
-    #offset += 1
-    #data = genfromtxt('/export/storage_adgandhi/PBJ_data_prep/pbj_full.csv',delimiter=',',skip_header=1+offset*ROWS,dtype="f8,i8,S9,i8,i8,i8",max_rows=ROWS)
-    #print("Processed and Saved "+str(offset*ROWS)+" data entries")
+    process_Data(data,offset,labelsList)
+    offset += 1
+    data = genfromtxt('/export/storage_adgandhi/PBJ_data_prep/pbj_full.csv',delimiter=',',skip_header=1+offset*ROWS,dtype="f8,i8,S9,i8,i8,i8",max_rows=ROWS)
+    print("Processed and Saved "+str(offset*ROWS)+" data entries")
 
 
 
