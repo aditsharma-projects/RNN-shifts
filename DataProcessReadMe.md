@@ -1,4 +1,4 @@
-Basic Workflow design
+# Basic Workflow design
 1) Raw csv (each row is a random entry corresponding to one employee's hours on one day)
 2) Preprocessed csv (each row contains all of an employee's shifts for one quarter + additional variables)
     a) Preprocessing steps
