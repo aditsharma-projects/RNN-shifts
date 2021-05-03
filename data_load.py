@@ -104,11 +104,9 @@ def get_facility_data(quarter,year,job,provNum,pay):
     #extract the right column depending on worker type
     if job in frame1:
         seq = frame1[mask1][job].tolist()
-        #print(seq)
         return seq[0:90]
     elif job in frame2:
         seq = frame2[mask2][job].tolist()
-        #print(seq)
         return seq[0:90]
     else:
         #print("NOT FOUND")
@@ -121,6 +119,7 @@ def one_quarter(seq,startDate):
     quarter,start,end = date_to_quarter((index,year))
     output = []
     offset = 0
+    #print("Quarter " + str(quarter))
     for day in range(start,end):
         if day < index:
             output.append(0)
@@ -143,13 +142,14 @@ def helper_index(inTuple):
 def get_entry(i,j,listSorted):
     dataPoints = sorted(listSorted[i:j],key=helper_index) 
     min = dateIndex(dataPoints[0][2])
-    max = dateIndex(dataPoints[len(dataPoints)-1][2])
+    max = dateIndex(dataPoints[len(dataPoints)-1][2])    #min and max are tuples of (index (0-365), year, dayOfWeek)
+    
     #removing extra entries past 90 days
     edge = 1
     while max[1] != min[1]:
         max = dateIndex(dataPoints[len(dataPoints)-2*edge][2]) #makes things easier if only spanning one year
         edge += 1
-    #want to generate (0 padded) shifts for a single quarter
+    #want to generate (0 padded) shifts between start date and end date (min and max)
     shifts = []
     currIndex = 0
     for ind in range(min[0],max[0]+1):
@@ -164,10 +164,8 @@ def get_entry(i,j,listSorted):
     providerId = dataPoints[0][4]
     payType = dataPoints[0][5]
     shifts,quarter,year,dayOfWeek = one_quarter(shifts,startDate)
-    #print(quarter)
-    if quarter == -1:
-        return None
-    if len(shifts)==0:
+    
+    if quarter == -1 or len(shifts)==0:
         return None
     
     facSequence = get_facility_data(quarter,year,jobTitle,providerId,payType)
@@ -177,9 +175,6 @@ def get_entry(i,j,listSorted):
     meanHrsByDay = average_hours_by_day(shifts,dayOfWeek)
     extraDescriptors = [jobTitle,providerId,payType,dayOfWeek] + meanHrsByDay
     
-    #print(len(shifts))
-    #print(len(facSequence))
-    
     
     return shifts+facSequence+extraDescriptors
 
@@ -187,12 +182,13 @@ def process_Data(data, ind, labelsList):
     for row in data:
         row = tuple(row)
     data = data.tolist()
-    data = sorted(data,key=itemgetter(1))
+    data = sorted(data,key=itemgetter(1)) #sort by employee id
     
     dataList = []
     currID = data[0][1]
     lastStart = 0
     lastEnd = 0
+    #scan through sorted array of entries and process each unique employee id
     for i in range(0,len(data)):
         lastEnd = i
         if data[i][1] != currID:
@@ -201,22 +197,14 @@ def process_Data(data, ind, labelsList):
             if sample != None:
                 sample = np.array(sample)
                 dataList.append(sample)
-                #print(sample.shape)
-            
+           
             lastStart = i
         if i%10000 == 0:
             print(i)
-    #print(len(dataList))
-    #print(dataList[0].shape)
-    dataList = np.array(dataList)
-    #labels = np.reshape(np.array(labelsList),(1,191))
     
+    dataList = np.array(dataList)
     df = pd.DataFrame(dataList)
     df.to_csv("/users/facsupport/asharma/Data/Preprocessed/tmp/"+str(ind)+".csv",header = labelsList)
-    #print(dataList.shape)
-    #print(labels.shape)
-    #np.savetxt("/users/facsupport/asharma/Data/Preprocessed/tmp/"+str(ind)+".csv",np.concatenate((labels,dataList),axis=0),delimiter=",")
-    
     return
 
 offset = 0
