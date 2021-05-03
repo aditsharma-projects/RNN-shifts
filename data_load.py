@@ -79,6 +79,7 @@ def load_csvs(quarter,year):
     frame2.columns = frame2.columns.str.upper()
     currQ = quarter
     currY = year
+    print("Year: "+str(year)+" Quarter: "+str(quarter))
     return 
 
 #Loads csv's matching quarter/year, filters out entries for current facility, then extracts the correct column based on job id
