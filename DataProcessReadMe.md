@@ -9,7 +9,7 @@ All of the data preprocessing code is in data_load.py, and running the file will
 1) Raw csv (each row is a random entry corresponding to one employee's hours on one day) "/export/storage_adgandhi/PBJ_data_prep/pbj_full.csv"
 2) Preprocessed csv (each row contains all of an employee's shifts for one quarter + additional variables) "/users/facsupport/asharma/Data/Preprocessed/tmp/ONE.csv"
 
-      <ins>Preprocessing steps (included are functions in data_load.py to pay attention to</ins>
+      <ins>Preprocessing steps (included are functions in data_load.py to pay attention to)</ins>
       
         1. Sort raw csv by employee id to get contiguous "blocks" of data for each employee -- process_Data()
         2. Sort each "block" of employee data by date -- get_entry()
