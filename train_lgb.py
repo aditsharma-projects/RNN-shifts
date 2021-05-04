@@ -8,7 +8,7 @@ df = pd.read_csv("/users/facsupport/asharma/Data/Preprocessed/tmp/ONE.csv")
 # Keep "interesting" jobs (TODO - use strings instead)
 df = df[df['jobTitle'].isin([33,34,35,11,12,3,5,16,17])]
 
-#%%
+# %%
 # ========================================
 #          SPLIT & PREP DATAFRAME
 # ========================================
@@ -36,7 +36,10 @@ train_inputs, train_labels = inputs[:split1], labels[:split1]
 val_inputs, val_labels = inputs[split1:split2], labels[split1:split2]
 test_inputs, test_labels = inputs[split2:], labels[split2:]
 
-#%%
+print(train_inputs)
+print(train_labels)
+
+# %%
 # ========================================
 #          DATAFRAME TO LGB DS
 # ========================================
@@ -46,8 +49,9 @@ cats = ['jobTitle', 'providerId', 'payType', 'dayOfWeek']
 train_data = lgb.Dataset(train_inputs, label=train_labels, categorical_feature=cats)
 val_data = lgb.Dataset(val_inputs, label=val_labels, categorical_feature=cats)
 test_data = lgb.Dataset(test_inputs, label=test_labels, categorical_feature=cats)
+print(train_data)
 
-#%%
+# %%
 # ========================================
 #            TRAIN WITH LGB
 # ========================================
