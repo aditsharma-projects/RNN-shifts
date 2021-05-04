@@ -34,8 +34,8 @@ def labels_list_to_dict(file):
             labels_map[col][encoded_val] = decoded_string
     return labels_map
 
-#Generates a dictionary that maps label names as they appear in labels.txt
-#to the abbreviations as they appear in the pbj facility csv files
+# Generates a dictionary that maps label names as they appear in labels.txt
+# to the abbreviations as they appear in the pbj facility csv files
 def label_mapping_dict(file):
     f = open(file)
     output = {}

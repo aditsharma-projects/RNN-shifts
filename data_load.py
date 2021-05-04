@@ -11,7 +11,7 @@ map_abbrev = label_mapping_dict("labelsToAbbrev.txt")
 ###
 ONLYGENERATENUM = 90
 
-#parsing date string from pbj_full.csv into a few different useful data values 
+# Parsing date string from pbj_full.csv into a few different useful data values 
 def dateIndex(date):    
     date = str(date)
     year = int(date[7:11])
@@ -31,10 +31,10 @@ def dateIndex(date):
     #print(dayOfWeek)
     return (index,year,dayOfWeek)
 
-#returns the corresponding quarter that an input date falls in
+# For dateTuple, return (its quarter (1 to 4), start of qtr, end of qtr)
 def date_to_quarter(dateTuple):
     quarters = [90,91,92,92]
-    if dateTuple[1] % 4 == 0 and dateTuple[1] % 100 != 0:
+    if dateTuple[1] % 4 == 0 and dateTuple[1] % 100 != 0: # Account for leap yr
         quarters[0] += 1
     total = 0
     for i in range(4):
@@ -43,14 +43,14 @@ def date_to_quarter(dateTuple):
             return (i+1,total-quarters[i]+1,total)
     return -1
 
-#returns a list of size 7, where list[0] = mean # hours on Monday and list[6] = mean # hours on Sunday
+# Return a list of size 7, where list[0] = mean # hours on Monday and list[6] = mean # hours on Sunday
 def average_hours_by_day(seq,startDay):
     totals = np.zeros(7)
-    numOccurances = np.zeros(7)
+    numOccurrences = np.zeros(7)
     for i in range(len(seq)):
         totals[(startDay+i)%7] += seq[i]
-        numOccurances[(startDay+i)%7] += 1
-    return list(totals/numOccurances)
+        numOccurrences[(startDay+i)%7] += 1
+    return list(totals/numOccurrences)
 
 ROWS = 100000
 ###########################
@@ -177,7 +177,7 @@ def get_entry(i,j,listSorted):
     
     return shifts+facSequence+extraDescriptors
 
-def process_Data(data, ind, labelsList):
+def process_Data(data, ind, labelsList, output_dir):
     for row in data:
         row = tuple(row)
     data = data.tolist()
@@ -203,7 +203,7 @@ def process_Data(data, ind, labelsList):
     
     dataList = np.array(dataList)
     df = pd.DataFrame(dataList)
-    df.to_csv("/users/facsupport/asharma/Data/Preprocessed/tmp/"+str(ind)+".csv",header = labelsList)
+    df.to_csv(output_dir+str(ind)+".csv",header = labelsList)
     return
 
 offset = 0
@@ -220,7 +220,7 @@ labelsList += ["jobTitle","providerId","payType","dayOfWeek","Mon","Tue","Wed","
 
 
 while data.shape[0] != 0:
-    process_Data(data,offset,labelsList)
+    process_Data(data,offset,labelsList, "/users/facsupport/asharma/Data/Preprocessed/tmp/")
     offset += 1
     data = genfromtxt('/export/storage_adgandhi/PBJ_data_prep/pbj_full.csv',delimiter=',',skip_header=1+offset*ROWS,dtype="f8,i8,S9,i8,i8,i8",max_rows=ROWS)
     print("Processed and Saved "+str(offset*ROWS)+" data entries")
