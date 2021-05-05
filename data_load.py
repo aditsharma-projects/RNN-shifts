@@ -144,7 +144,7 @@ def get_entry(i,j,listSorted):
     min = dateIndex(dataPoints[0][2])
     max = dateIndex(dataPoints[len(dataPoints)-1][2])    #min and max are tuples of (index (0-365), year, dayOfWeek)
     
-    if helper_index(max) - helper_index(min) > 120:
+    if max[0]+max[1]*365 - min[0]+min[1]*365 > 120:
         NUMDROPPED += 1
     #removing extra entries past 90 days
     edge = 1
