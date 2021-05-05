@@ -1,0 +1,40 @@
+           1-Administrator	: 1-Hrs_Admin
+           2-Blood Service Worker	: 38-GARB
+           3-Certified Nurse Aide	: 10-hrs_CNA
+           4-Clinical Laboratory Service Worker	: 36-GARB
+           5-Clinical Nurse Specialist	: 14-Hrs_ClinNrsSpec
+           6-Dentist	: 32-Dentist
+           7-Diagnostic Xray Service Worker : 37-GARB
+           8-Dietitian : 16-Hrs_Dietician
+           9-Feeding Assistant	: 17-Hrs_FeedAsst
+          10-Housekeeping Service Worker	: 39-GARB
+          11-Licensed Practical/Vocational Nurse	: 9-hrs_LPN
+          12-Licensed Practical/Vocational Nurse with Administrative Duties	: 8-hrs_LPN_admin
+          13-Medical Director	: 2-Hrs_MedDir
+          14-Medication Aide/Technician	: 12-hrs_MedAide
+          15-Mental Health Service Worker	: 34-Hrs_MHSvc
+          16-Nurse Aide in Training	: 11-hrs_NA_trn
+          17-Nurse Practitioner	: 13-Hrs_NP
+          18-Occupational Therapist	: 18-Hrs_OT
+          19-Occupational Therapy Aide	: 20-Hrs_OTaide
+          20-Occupational Therapy Assistant	: 19-Hrs_OTasst
+          21-Other Activities Staff	: 29-Hrs_OthActv
+          22-Other Physician	: 3-Hrs_OthMD
+          23-Other Service Worker	: 40-GARB
+          24-Other Social Worker	: 31-Hrs_OthSocWrk
+          25-Pharmacist	: 15-Hrs_Pharmacist
+          26-Physical Therapist : 21-Hrs_PT
+          27-Physical Therapy Aide : 23-Hrs_PTaide
+          28-Physical Therapy Assistant : 22-Hrs_PTasst
+          29-Physician Assistant : 4-Hrs_PA
+          30-Podiatrist : 33-GARB
+          31-Qualified Activities Professional	: 28-Hrs_QualActvProf
+          32-Qualified Social Worker	: 30-Hrs_QualSocWrk
+          33-Registered Nurse	: 7-hrs_RN
+          34-Registered Nurse Director of Nursing	: 5-hrs_RNDON
+          35-Registered Nurse with Administrative Duties	: 6-hrs_RNadmin
+          36-Respiratory Therapist	: 24-Hrs_RespTher
+          37-Respiratory Therapy Technician	: 25-Hrs_RespTech
+          38-Speech/Language Pathologist : 26-Hrs_SpcLangPath
+          39-Therapeutic Recreation Specialist : 27-Hrs_TherRecSpec
+          40-Vocational Service Worker : 35-GARB
