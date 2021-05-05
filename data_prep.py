@@ -51,7 +51,7 @@ def label_mapping_dict(file):
     return output
 
 # Generate deterministic file name from configuration
-def generate_file_names(preprocessed_dir, nrows, fill_missing_shifts, normalize, prev_shifts):
+def generate_file_names(preprocessed_dir, nrows, fill_missing_shifts, normalize, prev_shifts, day_of_week):
     name = preprocessed_dir + 'pbj'
     if nrows is not None:
         name += f"_nrows_{nrows}"
@@ -61,6 +61,8 @@ def generate_file_names(preprocessed_dir, nrows, fill_missing_shifts, normalize,
         name += "_norm"
     if prev_shifts:
         name += f"_prev_shifts_{prev_shifts}"
+    if day_of_week:
+        name += "_dow"
     return name + '.csv', name + '.info.csv'
 
 # Print s if conditional is truthy
@@ -113,11 +115,16 @@ def do_add_prev_shifts(df, prev_shifts, verbose):
     df = df[df[f"t_{prev_shifts}"] != -1]
     return df
 
-def initial_preprocess(raw_path, preprocessed_dir, nrows=None, fill_missing_shifts=False, verbose=True, normalize=False, prev_shifts=0, force_reload = False):
+def initial_preprocess(
+    raw_path, preprocessed_dir, nrows=None, fill_missing_shifts=False,
+    verbose=True, normalize=False, prev_shifts=0, force_reload=False,
+    day_of_week=False):
+
     if prev_shifts < 0:
         raise ValueError()
 
-    data_file, info_file = generate_file_names(preprocessed_dir, nrows, fill_missing_shifts, normalize, prev_shifts)
+    data_file, info_file = generate_file_names(
+        preprocessed_dir, nrows, fill_missing_shifts, normalize, prev_shifts, day_of_week)
 
     if not force_reload:
         try:
@@ -138,12 +145,16 @@ def initial_preprocess(raw_path, preprocessed_dir, nrows=None, fill_missing_shif
         "fill_missing_shifts": fill_missing_shifts,
         "normalize": normalize,
         "prev_shifts": prev_shifts,
+        "day_of_week": day_of_week,
         "creation_date": datetime.now().strftime("%d/%m/%Y %H:%M:%S")
     }
 
     if fill_missing_shifts:
         df = do_fill_missing_shifts(df, verbose)
     
+    if day_of_week:
+        df['day_of_week'] = pd.to_datetime(df.date).dt.day_of_week
+        
     if normalize:
         # Normalize features
         for col in ['hours']:
