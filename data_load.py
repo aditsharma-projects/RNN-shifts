@@ -10,6 +10,7 @@ labels_map = labels_list_to_dict(labels_list_logfile)
 map_abbrev = label_mapping_dict("labelsToAbbrev.txt")
 ###
 ONLYGENERATENUM = 90
+NUMDROPPED = 0
 
 # Parsing date string from pbj_full.csv into a few different useful data values 
 def dateIndex(date):    
@@ -142,7 +143,9 @@ def get_entry(i,j,listSorted):
     dataPoints = sorted(listSorted[i:j],key=helper_index) 
     min = dateIndex(dataPoints[0][2])
     max = dateIndex(dataPoints[len(dataPoints)-1][2])    #min and max are tuples of (index (0-365), year, dayOfWeek)
-    
+    global NUMDROPPED
+    if max[0]+max[1]*365 - min[0]+min[1]*365 > 120:
+        NUMDROPPED += 1
     #removing extra entries past 90 days
     edge = 1
     while max[1] != min[1]:
@@ -199,7 +202,7 @@ def process_Data(data, ind, labelsList, output_dir):
            
             lastStart = i
         if i%10000 == 0:
-            print(i)
+            print(str(i)+" Number of incomplete entries "+str(NUMDROPPED))
     
     dataList = np.array(dataList)
     df = pd.DataFrame(dataList)
