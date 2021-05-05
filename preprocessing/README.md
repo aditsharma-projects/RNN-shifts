@@ -10,10 +10,12 @@ Each row in the shift data files (Stata or CSV) corresponds to one day of work f
 **OUT:** `/export/storage_adgandhi/PBJ_data_prep/pbj_full.csv` and `labels.txt`
 
 ## `data_prep.py`
-Preprocesses raw shift data csv (produced by `dta_to_csv.do`) based on several parameters. Returns a tuple containing the processed dataframe and a dictionary with info about how/when preprocessing took place.
+Preprocesses a csv of raw shift data (produced by `dta_to_csv.do`) based on several parameters. Returns a tuple containing the processed dataframe and a dictionary with info about how/when preprocessing took place.
 ```py
 initial_preprocess(
-    raw_path, preprocessed_dir, nrows=None, fill_missing_shifts=False, normalize=False, prev_shifts=0, day_of_week=False, force_reload=False, verbose=True):
+    raw_path, preprocessed_dir,
+    nrows=None, fill_missing_shifts=False, normalize=False, prev_shifts=0,
+    day_of_week=False, force_reload=False, verbose=True):
 ```
 ### raw_path: ***str***
 CSV file to read from.
