@@ -206,24 +206,25 @@ def process_Data(data, ind, labelsList, output_dir):
     df.to_csv(output_dir+str(ind)+".csv",header = labelsList)
     return
 
-offset = 0
-data = genfromtxt('/export/storage_adgandhi/PBJ_data_prep/pbj_full.csv',delimiter=',',skip_header=1,dtype="f8,i8,S9,i8,i8,i8",max_rows=ROWS)
+if __name__ == "__main__":
+    offset = 0
+    data = genfromtxt('/export/storage_adgandhi/PBJ_data_prep/pbj_full.csv',delimiter=',',skip_header=1,dtype="f8,i8,S9,i8,i8,i8",max_rows=ROWS)
 
-#Construct list of labels for processed csv
-labelsList = []
-for i in range(90):
-    labelsList.append("t_"+str(i))
-for i in range(90):
-    labelsList.append("f_"+str(i))
-labelsList += ["jobTitle","providerId","payType","dayOfWeek","Mon","Tue","Wed","Thu","Fri","Sat","Sun"]
+    #Construct list of labels for processed csv
+    labelsList = []
+    for i in range(90):
+        labelsList.append("t_"+str(i))
+    for i in range(90):
+        labelsList.append("f_"+str(i))
+    labelsList += ["jobTitle","providerId","payType","dayOfWeek","Mon","Tue","Wed","Thu","Fri","Sat","Sun"]
 
 
 
-while data.shape[0] != 0:
-    process_Data(data,offset,labelsList, "/users/facsupport/asharma/Data/Preprocessed/tmp/")
-    offset += 1
-    data = genfromtxt('/export/storage_adgandhi/PBJ_data_prep/pbj_full.csv',delimiter=',',skip_header=1+offset*ROWS,dtype="f8,i8,S9,i8,i8,i8",max_rows=ROWS)
-    print("Processed and Saved "+str(offset*ROWS)+" data entries")
+    while data.shape[0] != 0:
+        process_Data(data,offset,labelsList, "/users/facsupport/asharma/Data/Preprocessed/tmp/")
+        offset += 1
+        data = genfromtxt('/export/storage_adgandhi/PBJ_data_prep/pbj_full.csv',delimiter=',',skip_header=1+offset*ROWS,dtype="f8,i8,S9,i8,i8,i8",max_rows=ROWS)
+        print("Processed and Saved "+str(offset*ROWS)+" data entries")
 
 
 
