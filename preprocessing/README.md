@@ -1,5 +1,12 @@
 # Data Preprocessing Pipeline
 
+## `Python Dependencies`
+```sh
+conda install python=3.8
+conda install pandas
+conda install numpy
+```
+
 ## `dta_to_csv.do`
 Converts the shift data Stata file to a CSV, where numbers are used for encoded variables, and a list of labels with which the encoded variable strings can be recovered.
 
