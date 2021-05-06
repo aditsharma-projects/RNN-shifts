@@ -68,6 +68,7 @@ df, info = initial_preprocess(
     fill_missing_shifts=True,
     normalize=True,
     day_of_week=True,
-    prev_shifts=30
+    prev_shifts=30,
+    fac_data=True
 )
 ```
