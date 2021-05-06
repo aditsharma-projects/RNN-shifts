@@ -52,7 +52,7 @@ If true, raw data will be loaded and preprocessing will be performed even if pre
 Whether to print out progress messages.
 
 ### fac_data: ***bool***
-Whether to generate columns for the following facility level characteristics: 'nresid', 'multifac', 'profit', 'avg_dailycensus', 'sd_dailycensus'
+Whether to generate columns for the following facility level characteristics: 'nresid', 'multifac', 'profit', 'avg_dailycensus', 'sd_dailycensus'.
 Can optionally set this flag to false for quicker dataset generation
 
 ### Example usage:
