@@ -5,9 +5,11 @@ PREPROCESSED_DIR = '/export/storage_adgandhi/PBJ_data_prep/prepped/'
 
 df, info = initial_preprocess(
     RAW_DATA_PATH, PREPROCESSED_DIR,
-    nrows=140801548, # 10%
+    nrows=140801548, #10% 
     fill_missing_shifts=True,
     normalize=True,
     day_of_week=True,
-    prev_shifts=30
+    prev_shifts=30,
+    fac_data=True
 )
+
