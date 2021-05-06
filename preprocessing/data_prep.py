@@ -2,6 +2,7 @@ import pandas as pd
 import numpy as np
 from datetime import datetime
 
+
 # Generates a dictionary from Stata log file in which 'labels list' is run
 # For some column and numerically encoded val, the decoded string is:
 # `labels_map[column][encoded_val]` (if labels_map is this function's output)
@@ -115,9 +116,38 @@ def do_add_prev_shifts(df, prev_shifts, verbose):
     df = df[df[f"t_{prev_shifts}"] != -1]
     return df
 
+def do_add_fac_data(df, verbose):
+    print_if("Adding facility data...", verbose)
+    df['nresid'] = pd.Series(np.zeros(len(df)),index=df.index)
+    df['multifac'] = pd.Series(np.zeros(len(df)),index=df.index)
+    df['profit'] = pd.Series(np.zeros(len(df)),index=df.index)
+    df['avg_dailycensus'] = pd.Series(np.zeros(len(df)),index=df.index)
+    df['sd_dailycensus'] = pd.Series(np.zeros(len(df)),index=df.index)
+    
+    logfile = '/mnt/staff/rtjoa/shifts/RNN-shifts/preprocessing/labels.txt'
+    labels_map = labels_list_to_dict(logfile)
+    
+    facPath = "/export/storage_adgandhi/PBJhours_ML/Data/Raw/LTCFocus/"
+    facFrames = {2017: pd.read_excel(facPath+"facility_2017.xlsx"), 2018: pd.read_excel(facPath+"facility_2017.xlsx"), 
+                 2019: pd.read_excel(facPath+"facility_2019_MDS.xlsx")}
+    for i in range(len(df)):
+        providerId = labels_map['prov_id_label'][df.iloc[i].prov_id]
+        year = df.iloc[i].date.year
+        frame = facFrames[year]
+        legFrame = facFrames[2018]      #to handle 2019 file missing entries
+        mask = (frame['accpt_id'] == providerId)
+        legMask = (legFrame['accpt_id'] == providerId)
+        df.iloc[i,df.columns.get_loc('nresid')] = frame[mask]['nresid']
+        df.iloc[i,df.columns.get_loc('multifac')] = legFrame[legMask]['multifac']   #2019 csv doesn't contain
+        df.iloc[i,df.columns.get_loc('profit')] = legFrame[legMask]['profit']       #2019 csv doesn't contain
+        df.iloc[i,df.columns.get_loc('avg_dailycensus')] = frame[mask]['avg_dailycensus']
+        df.iloc[i,df.columns.get_loc('sd_dailycensus')] = frame[mask]['sd_dailycensus']
+     
+    return df
+
 def initial_preprocess(
     raw_path, preprocessed_dir, nrows=None, fill_missing_shifts=False,
-    verbose=True, normalize=False, prev_shifts=0, force_reload=False,
+    verbose=True, normalize=False, prev_shifts=0, fac_data=True, force_reload=False,
     day_of_week=False):
 
     if prev_shifts < 0:
@@ -166,6 +196,9 @@ def initial_preprocess(
     
     if prev_shifts:
         df = do_add_prev_shifts(df, prev_shifts, verbose)
+        
+    if fac_data:
+        df = do_add_fac_data(df, verbose)
 
     print_if("Saving preprocessed data...", verbose)
     df.to_csv(data_file, index=False)
