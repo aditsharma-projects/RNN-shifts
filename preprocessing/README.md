@@ -22,7 +22,7 @@ Preprocesses a csv of raw shift data (produced by `dta_to_csv.do`) based on seve
 initial_preprocess(
     raw_path, preprocessed_dir,
     nrows=None, fill_missing_shifts=False, normalize=False, prev_shifts=0,
-    day_of_week=False, force_reload=False, verbose=True):
+    day_of_week=False, force_reload=False, verbose=True, fac_data=True):
 ```
 ### raw_path: ***str***
 CSV file to read from.
@@ -50,6 +50,10 @@ If true, raw data will be loaded and preprocessing will be performed even if pre
 
 ### verbose: ***bool***
 Whether to print out progress messages.
+
+### fac_data: ***bool***
+Whether to generate columns for the following facility level characteristics: 'nresid', 'multifac', 'profit', 'avg_dailycensus', 'sd_dailycensus'
+Can optionally set this flag to false for quicker dataset generation
 
 ### Example usage:
 ```py
