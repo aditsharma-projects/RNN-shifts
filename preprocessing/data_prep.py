@@ -52,7 +52,7 @@ def label_mapping_dict(file):
     return output
 
 # Generate deterministic file name from configuration
-def generate_file_names(preprocessed_dir, nrows, fill_missing_shifts, normalize, prev_shifts, day_of_week):
+def generate_file_names(preprocessed_dir, nrows, fill_missing_shifts, normalize, prev_shifts, day_of_week, fac_data):
     name = preprocessed_dir + 'pbj'
     if nrows is not None:
         name += f"_nrows_{nrows}"
@@ -64,6 +64,8 @@ def generate_file_names(preprocessed_dir, nrows, fill_missing_shifts, normalize,
         name += f"_prev_shifts_{prev_shifts}"
     if day_of_week:
         name += "_dow"
+    if fac_data:
+        name += "_fac"
     return name + '.csv', name + '.info.csv'
 
 # Print s if conditional is truthy
@@ -147,14 +149,14 @@ def do_add_fac_data(df, verbose):
 
 def initial_preprocess(
     raw_path, preprocessed_dir, nrows=None, fill_missing_shifts=False,
-    verbose=True, normalize=False, prev_shifts=0, fac_data=True, force_reload=False,
+    verbose=True, normalize=False, prev_shifts=0, fac_data=False, force_reload=False,
     day_of_week=False):
 
     if prev_shifts < 0:
         raise ValueError()
 
     data_file, info_file = generate_file_names(
-        preprocessed_dir, nrows, fill_missing_shifts, normalize, prev_shifts, day_of_week)
+        preprocessed_dir, nrows, fill_missing_shifts, normalize, prev_shifts, day_of_week, fac_data)
 
     if not force_reload:
         try:
