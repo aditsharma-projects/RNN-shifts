@@ -3,9 +3,12 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 import tensorflow as tf
-from data_prep import initial_preprocess
-from window_generator import WindowGenerator
 
+# Perform imports relative to parent directory
+import sys
+sys.path.insert(0, '..')
+from preprocessing.window_generator import WindowGenerator
+from preprocessing.data_prep import initial_preprocess
 # %%
 # ========================================
 #                 SETTINGS
