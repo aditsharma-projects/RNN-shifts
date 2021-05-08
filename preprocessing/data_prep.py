@@ -172,6 +172,8 @@ def initial_preprocess(
     
     print_if("Loading data...", verbose)
     df = pd.read_csv(raw_path, nrows=nrows, dtype={'hours':'float64'}, parse_dates = ['date'])
+    # Keep "interesting" jobs (TODO - use strings instead)
+    df = df[df['job_title'].isin([33,34,35,11,12,3,5,16,17])]
     info = {
         "nrows": nrows,
         "fill_missing_shifts": fill_missing_shifts,
