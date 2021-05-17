@@ -2,7 +2,6 @@ import pandas as pd
 import numpy as np
 import lightgbm as lgb
 import datetime
-now = datetime.datetime.now
 
 # %%
 #### CONFIGURATION ####
@@ -18,13 +17,9 @@ COLUMNS = {
     "pay_type": np.int32,
     "hours": np.double,
     "day_of_week": np.int32,
-    "week_perc0": np.double,
-    "week_perc1": np.double,
-    "week_perc2": np.double,
-    "week_perc3": np.double,
-    "week_perc4": np.double,
-    "week_perc5": np.double,
-    "week_perc6": np.double,
+    "perc_hours_today_before": np.double,
+    "perc_hours_yesterday_before": np.double,
+    "perc_hours_tomorrow_before": np.double,
     "hours_l1": np.double,
     "hours_l2": np.double,
     "hours_l3": np.double,
@@ -33,21 +28,20 @@ COLUMNS = {
     "hours_l6": np.double,
     "hours_l7": np.double,
     "hours_l14": np.double,
-    "hours_l21": np.double,
-    "hours_l28": np.double,
-    "hours_l29": np.double,
 }
 
 CATEGORICALS = ['job_title', 'pay_type', 'day_of_week']
 
 PARAM_AXES = {
     "num_leaves": [30, 50, 100, 200, 300, 500, 1000],
+    "learning_rate": [0.03, 0.05, 0.1, 0.3],
 }
 
-INIT_PARAM = {
+INIT_PARAMS = {
     "num_leaves": 50,
     'learning_rate': 0.1,
     'metric': 'mse',
+    'verbose': -1,
 }
 
 # %%
@@ -77,23 +71,26 @@ class Timer(object):
             print(msg)
         self.one_line = one_line
         self.msg = msg
-        self.start_time = now()
+        self.start_time = datetime.datetime.now()
     
-    def done(self):
+    def done(self, msg=None):
         if self.start_time is None:
             print("Error: time stopped but not running")
             return
-        duration = now() - self.start_time
-        if self.one_line:
-            print(f"Took {duration}.")
-        else:
-            print(f"Finished \"{self.msg}\" in {duration}.")
+        duration = datetime.datetime.now() - self.start_time
+        if msg is None:
+            if self.one_line:
+                msg = "done in %s."
+            else:
+                msg = "Done in %s."
+        print(msg % duration)
+        print()
         self.start_time = None
 
 # %%
 #### PRINT CONFIGURATION ####
 
-print(now())
+print(datetime.datetime.now())
 print()
 
 print_header("Configuration")
@@ -107,7 +104,7 @@ print_kv("TEST_FILE", TRAIN_FILE)
 print_dict("COLUMNS", COLUMNS)
 print_kv("CATEGORICALS", CATEGORICALS)
 print_dict("PARAM_AXES", PARAM_AXES)
-
+print_dict("INIT_PARAMS", INIT_PARAMS)
 
 # %%
 #### LOAD DATA ####
@@ -127,26 +124,55 @@ timer_load.done()
 
 timer_dropna = Timer("Dropping N/A values...")
 for df in [train, val, test]:
-    df.dropna(inplace=True) # Drop all rows with N/A values
-    for col, t in COLUMNS.items(): # Cast remaining rows to appropriate type
+    for col, t in COLUMNS.items(): # Cast rows to appropriate type
         df[col] = df[col].astype(t)
+    df.dropna(inplace=True) # Drop all rows with N/A values
 timer_dropna.done()
 
-timer_split = Timer("Splitting into test/train...")
+timer_split = Timer("Splitting into inputs and labels...")
 train_inputs, train_labels = train.drop(['hours'], axis=1).filter(COLUMNS.keys()), train.filter(['hours'])
 val_inputs, val_labels = val.drop(['hours'], axis=1).filter(COLUMNS.keys()), val.filter(['hours'])
 test_inputs, test_labels = test.drop(['hours'], axis=1).filter(COLUMNS.keys()), test.filter(['hours'])
 timer_split.done()
 
-param = INIT_PARAM.copy()
+# %%
+#### TRAIN AND TUNE ####
+
+params = INIT_PARAMS.copy()
+
+# Tune one param at a time
 for name in PARAM_AXES:
+    print_header(f"Tuning {name}")
+    
+    best_value = None
+    best_loss = float('inf')
+
+    # For each option given for that parameter, train a model
     for value in PARAM_AXES[name]:
-        param[name] = value
-        print_dict(param)
+
+        params[name] = value
         train_data = lgb.Dataset(train_inputs, label=train_labels, categorical_feature=CATEGORICALS)
         val_data = lgb.Dataset(val_inputs, label=val_labels, categorical_feature=CATEGORICALS)
-        test_data = lgb.Dataset(test_inputs, label=test_labels, categorical_feature=CATEGORICALS)
+        
+        desc = ", ".join(f"{k}:{v}" for k, v in params.items() if k in PARAM_AXES)
+        timer_train = Timer(f"Training ({desc})...")
+        params['num_iterations'] = 2
+        
         evals_result = {}
-        bst = lgb.train(param, train_data, valid_sets=[val_data], evals_result=evals_result, early_stopping_rounds=5)
-        # TODO: choose best value and save
-        break
+        bst = lgb.train(params, train_data,
+            valid_sets=[val_data],
+            evals_result=evals_result,
+            categorical_feature=CATEGORICALS,
+            early_stopping_rounds=5,
+            verbose_eval=False,
+        )
+
+        loss = evals_result['training']['l2'][-1]
+        timer_train.done(f"done in %s. Val loss: {loss}")
+
+        if loss < best_loss:
+            best_value = value
+            best_loss = loss
+    
+    print(f"Choosing {best_value} for {name} (val loss: {best_loss}).")
+    params[name] = best_value
