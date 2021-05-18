@@ -9,8 +9,8 @@ import datetime
 ROWS = 10 ** 3
 
 TRAIN_FILE = "/export/storage_adgandhi/PBJhours_ML/Data/Intermediate/train_test_validation/training_set.csv"
-VAL_FILE = "/export/storage_adgandhi/PBJhours_ML/Data/Intermediate/train_test_validation/validation_set.csv"
-TEST_FILE = "/export/storage_adgandhi/PBJhours_ML/Data/Intermediate/train_test_validation/testing_set.csv"
+VAL_FILE = "/export/storage_adgandhi/PBJhours_ML/Data/Intermediate/train_test_validation/crossvalidation_set.csv"
+TEST_FILE = "/export/storage_adgandhi/PBJhours_ML/Data/Intermediate/train_test_validation/holdout_set.csv"
 
 COLUMNS = {
     "job_title": np.int32,
@@ -156,7 +156,6 @@ for name in PARAM_AXES:
         
         desc = ", ".join(f"{k}:{v}" for k, v in params.items() if k in PARAM_AXES)
         timer_train = Timer(f"Training ({desc})...")
-        params['num_iterations'] = 2
         
         evals_result = {}
         bst = lgb.train(params, train_data,
@@ -167,7 +166,7 @@ for name in PARAM_AXES:
             verbose_eval=False,
         )
 
-        loss = evals_result['training']['l2'][-1]
+        loss = evals_result['valid_0']['l2'][-1]
         timer_train.done(f"done in %s. Val loss: {loss}")
 
         if loss < best_loss:
@@ -175,4 +174,5 @@ for name in PARAM_AXES:
             best_loss = loss
     
     print(f"Choosing {best_value} for {name} (val loss: {best_loss}).")
+    print()
     params[name] = best_value
