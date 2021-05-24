@@ -92,10 +92,11 @@ def log_model_info(model_info, path):
     df = pd.concat([df, new_df], axis=0)
     df.to_csv(path, index=False)
 
-# Timer class to simply record how long something takes
-# timer_foo = Timer("Beginning foo...")
-# foo()
-# timer_foo
+# Timer class to record how long something takes
+# >>> timer_foo = Timer("Beginning foo...")
+# >>> foo()
+# >>> timer_foo.done()
+# Can access timer_foo.start_time, timer_foo.duration, timer_foo.end_time
 class Timer(object):
     def __init__(self, msg, one_line=True):
         if one_line:
