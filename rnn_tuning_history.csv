@@ -1,0 +1,3 @@
+Recurrance length,LSTM Units,Embedding Dimension,FF model shape,Initial Learning Rate,Regularization,Metric,Training loss,Val loss,time_start,time_duration,Epochs,Columns,LSTM type,user
+3,32,0,"[16, 8, 1]",0.0001,Batch Normalization,mse,13.293734550476074,14.507460594177246,2021-05-27 15:07:07.817512,13:42:40.715766,10,"['day_of_week', 'avg_employees', 'perc_hours_today_before', 'perc_hours_yesterday_before', 'perc_hours_tomorrow_before']",Unconditioned,asharma
+7,32,0,"[16, 8, 1]",0.0001,Batch Normalization,mse,11.717721939086914,13.305655479431152,2021-05-27 15:07:04.109797,20:10:00.751511,10,"['day_of_week', 'avg_employees', 'perc_hours_today_before', 'perc_hours_yesterday_before', 'perc_hours_tomorrow_before']",Unconditioned,asharma
