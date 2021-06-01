@@ -3,6 +3,7 @@ import time
 import datetime
 import tensorflow as tf
 from multiprocessing import Process
+import numpy as np
 
 #Logs hyperparameter specifications and other attributes of each run into a csv file
 def log_model_info(model_info, path):
@@ -78,9 +79,9 @@ def get_data():
     val_inputs = expand_one_hot(['day_of_week'],val_inputs) 
     
     BUFFER_SIZE = 10000
-    BATCH_SIZE = 256
-    trainSet = tf.data.Dataset.from_tensor_slices((train_inputs,train_labels)).shuffle(BUFFER_SIZE).batch(BATCH_SIZE)
-    valSet = tf.data.Dataset.from_tensor_slices((val_inputs,val_labels)).shuffle(BUFFER_SIZE).batch(BATCH_SIZE)
+    BATCH_SIZE = 128
+    trainSet = tf.data.Dataset.from_tensor_slices((train_inputs,train_labels)).shuffle(BUFFER_SIZE).batch(BATCH_SIZE,drop_remainder=True)
+    valSet = tf.data.Dataset.from_tensor_slices((val_inputs,val_labels)).shuffle(BUFFER_SIZE).batch(BATCH_SIZE,drop_remainder=True)
     return trainSet,valSet,vocab_size
 
 #RNN class, defines attributes of a model
@@ -120,6 +121,47 @@ class RNN(tf.keras.Model):
         
         return self.out(x)
 
+class RNN_Conditioned(tf.keras.Model):
+    #define all components of model
+    def __init__(self,recurrance_length,lstm_units,dense_shape,embed_dim,vocab_size):
+        super(RNN_Conditioned, self).__init__()
+        self.embed_dim = embed_dim
+        self.recurrance_length = recurrance_length
+        self.units = lstm_units
+        self.transform = tf.keras.layers.Dense(lstm_units-embed_dim)
+        if embed_dim == 0:
+            embed_dim += 1
+        self.embeddings = tf.keras.layers.Embedding(vocab_size,embed_dim) 
+        self.lstm = tf.keras.layers.LSTM(lstm_units)
+        self.dense_layers = []
+        for width in dense_shape:
+            if width == 1:
+                break
+            self.dense_layers.append(tf.keras.layers.Dense(width,activation=tf.nn.relu))
+            self.dense_layers.append(tf.keras.layers.BatchNormalization())
+        self.out = tf.keras.layers.Dense(1)
+       
+    
+    #define model architecture
+    def call(self, inputs, training=False):
+        #prov_id is first column
+        time_series = tf.reverse(tf.expand_dims(inputs[:,1:int(self.recurrance_length+1)],2),[1])
+        
+        additional_inputs = inputs[:,15:]
+        transformed_inputs = self.transform(additional_inputs)
+        if self.embed_dim != 0:    
+            embedding_vectors = self.embeddings(inputs[:,0])
+            transformed_inputs = tf.concat([transformed_inputs,embedding_vectors],1)
+        c_0 = tf.convert_to_tensor(np.random.random([128, self.units]).astype(np.float32))
+        h_0 = tf.convert_to_tensor(np.random.random([128, self.units]).astype(np.float32))
+        h_0 += transformed_inputs
+        x = self.lstm(time_series, initial_state=[h_0,c_0])
+           
+       
+        for layer in self.dense_layers:
+            x = layer(x)
+        
+        return self.out(x)
     
 learning_rate = 1e-3
 # Callback function to decrease learning rate
@@ -134,18 +176,16 @@ def decay(epoch):
 # base dict of values to log for each run. Some values are common to every run
 base_dict = {'Recurrance length':-1,'LSTM Units':16,'Embedding Dimension':0,'FF model shape':[8,8,4,1],'Initial Learning Rate':learning_rate,'Regularization':"Batch Normalization",'Metric':"mse",'Training loss':-1,'Val loss':-1,
              'time_start':-1,'time_duration':-1,'Epochs':5,'Columns':['day_of_week','avg_employees','perc_hours_today_before',
-             'perc_hours_yesterday_before', 'perc_hours_tomorrow_before'],'LSTM type':"Unconditioned",'user':"asharma"}
+             'perc_hours_yesterday_before', 'perc_hours_tomorrow_before'],'LSTM type':"Conditioned",'user':"asharma"}
 
 # Worker function for multiprocessing Process. Trains an RNN with the specified recurrance length
-def train_and_test_models1(recurrance_length,lstm_units,dense_shape,embed_dim):
-    import tensorflow as tf
-    import pandas as pd
+def train_and_test_models(recurrance_length,lstm_units,dense_shape,embed_dim):
     print(f"Started process with recurrance length: {recurrance_length}")
     trainSet,valSet,vocab = get_data()
     start_time = time.time()
     start_date = datetime.datetime.now()
     with tf.device('/cpu:0'):
-        model = RNN(recurrance_length,lstm_units,dense_shape,embed_dim,vocab)
+        model = RNN_Conditioned(recurrance_length,lstm_units,dense_shape,embed_dim,vocab)
         model.compile(loss=tf.keras.losses.MeanSquaredError(),
             optimizer=tf.keras.optimizers.Adam(),
             metrics=[tf.keras.metrics.MeanAbsoluteError()])
@@ -169,14 +209,15 @@ def train_and_test_models1(recurrance_length,lstm_units,dense_shape,embed_dim):
     log_model_info(param_dict,'/users/facsupport/asharma/RNN-shifts/rnn_tuning_history.csv')
     print("COMPLETED WORK")
 
+#train_and_test_models(14,16,[8,4,1],0)    
     
-shapes = [[16,8,1],[8,8,8,1],[16,8,8,4,1],[16,8,8,4,1]]
-units = [8,16,32]
+shapes = [[16,8,1],[8,8,8,1],[1],[8,1]]
+units = [16,32]
 tasks = []
 for shape in shapes:
     for size in units:  
-        tasks.append(Process(target=train_and_test_models1,args=(14,size,shape,10)))
-        #tasks.append(Process(target=train_and_test_models1,args=(14,size,shape,0)))
+        tasks.append(Process(target=train_and_test_models,args=(14,size,shape,10)))
+        #tasks.append(Process(target=train_and_test_models,args=(14,size,shape,0)))
 
 for task in tasks:
     task.start()
