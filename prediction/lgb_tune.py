@@ -3,18 +3,27 @@ import numpy as np
 import lightgbm as lgb
 import datetime
 import getpass
+import os
 
 # %%
 #### CONFIGURATION ####
 
+# Number of rows to truncate to. Unless debugging, should always be set to None
+# so full data files are used.
 ROWS = None
 
+# Paths to data files
 TRAIN_FILE = "/export/storage_adgandhi/PBJhours_ML/Data/Intermediate/train_test_validation/training_set.csv"
 VAL_FILE = "/export/storage_adgandhi/PBJhours_ML/Data/Intermediate/train_test_validation/crossvalidation_set.csv"
 TEST_FILE = "/export/storage_adgandhi/PBJhours_ML/Data/Intermediate/train_test_validation/holdout_set.csv"
 
+# Path to CSV for model tuning history
 HISTORY_FILE = "/users/facsupport/rtjoa/model_history.csv"
 
+# Path to directory for feature importance plots
+FIGURES_FOLDER = "figures"
+
+# Columns to pull from data files and their corresponding types
 COLUMNS = {
     "prov_id": "category",
     "job_title": "category",
@@ -34,17 +43,21 @@ COLUMNS = {
     "hours_l14": np.double,
 }
 
+# List of columsn to treat as categorical variables
 CATEGORICALS = ['prov_id', 'job_title', 'pay_type', 'day_of_week']
 
+# LightGBM parameters to tune, and options to pick from for each
 PARAM_AXES = {
-    "num_leaves": [30, 50, 100, 200, 300, 500, 1000],
-    "learning_rate": [0.03, 0.05, 0.1, 0.3],
-    "min_data_in_leaf": [20, 50, 100],
+    "learning_rate": [0.003, 0.005, 0.01, 0.03],
+    "num_leaves": [2000, 4000, 8000],
+    "min_data_in_leaf": [1, 10, 20, 50, 100],
 }
 
+# Parameters for LightGBM training. Those also defined in PARAM_AXES above will
+# be overriden as the model is tuned.
 INIT_PARAMS = {
     # Tuned params
-    "num_leaves": 50,
+    "num_leaves": 4000,
     'learning_rate': 0.1,
     'min_data_in_leaf': 20,
     # Other params
@@ -52,8 +65,11 @@ INIT_PARAMS = {
     'verbose': -1,
     'force_row_wise': True,
     'deterministic': True,
+    'num_threads': 50,
 }
 
+# After how many rounds of no improvement in validation loss to stop training,
+# then revert back to the best iteration.
 EARLY_STOPPING_ROUNDS = 5
 
 # %%
@@ -134,6 +150,9 @@ print_header("Configuration")
 if ROWS is not None:
     print(f"WARNING: Truncating to {ROWS} rows. Set ROWS=None for meaningful results.\n")
 
+if not os.path.isdir(FIGURES_FOLDER):
+    print(f"WARNING: FIGURES_FOLDER is not a valid directory. Feature importance plots will not be saved.\n")
+
 print_kv("TRAIN_FILE", TRAIN_FILE)
 print_kv("VAL_FILE", VAL_FILE)
 print_kv("TEST_FILE", TRAIN_FILE)
@@ -186,14 +205,18 @@ for name in PARAM_AXES:
 
     # For each option given for that parameter, train a model
     for value in PARAM_AXES[name]:
-
+        # Update param as we move along its axis
         params[name] = value
+
+        # Recreate datasets
         train_data = lgb.Dataset(train_inputs, label=train_labels, categorical_feature=CATEGORICALS)
         val_data = lgb.Dataset(val_inputs, label=val_labels, categorical_feature=CATEGORICALS)
         
+        # Short descriptor, made up of params being tuned
         desc = ", ".join(f"{k}:{v}" for k, v in params.items() if k in PARAM_AXES)
-        timer_train = Timer(f"Training ({desc})...")
         
+        # Train!
+        timer_train = Timer(f"Training ({desc})...")        
         evals_result = {}
         bst = lgb.train(params, train_data,
             valid_sets=[val_data],
@@ -204,15 +227,15 @@ for name in PARAM_AXES:
             categorical_feature=CATEGORICALS,
             verbose_eval=False,
         )
-        
         training_loss = ((bst.predict(train_inputs) - train_labels['hours'])**2).mean()
         val_loss = ((bst.predict(val_inputs) - val_labels['hours'])**2).mean()
         num_trees = bst.num_trees()
-        timer_train.done(f"chose iter {bst.current_iteration()}/{len(evals_result['val_data']['l2'])} ({num_trees} trees) in %s.")
+        chosen_iter, total_iters = bst.current_iteration(), len(evals_result['val_data']['l2'])
+        timer_train.done(f"chose iter {chosen_iter}/{total_iters} ({num_trees} trees) in %s.")
         print(f"Training loss: {training_loss:.5f} | Val loss: {val_loss:.5f}")
         print()
 
-        # Save model info
+        # Save model info and performance
         model_info = params.copy()
         model_info['training_loss'] = training_loss
         model_info['val_loss'] = val_loss
@@ -225,6 +248,12 @@ for name in PARAM_AXES:
         model_info['user'] = user
         log_model_info(model_info, HISTORY_FILE)
 
+        # Save feature importance figures
+        if os.path.isdir(FIGURES_FOLDER):
+            fig_path = os.path.join(FIGURES_FOLDER, f"{desc}.png")
+            lgb.plot_importance(bst).get_figure().savefig(fig_path)
+
+        # Track ideal value for this param
         if val_loss < best_loss:
             best_value = value
             best_loss = val_loss
