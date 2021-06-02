@@ -4,8 +4,14 @@ import datetime
 import tensorflow as tf
 from multiprocessing import Process
 import numpy as np
-LAGGED_DAYS = 14
+import sys
+
+LAGGED_DAYS = 30
 index_dict = {'prov_id':0,'recurrence_start':1,'descriptors_start':LAGGED_DAYS+1}
+
+# Make print flush by default
+def print(*objects, sep=' ', end='\n', file=sys.stdout, flush=True):
+    __builtins__.print(*objects, sep=sep, end=end, file=file, flush=flush)
 
 #Logs hyperparameter specifications and other attributes of each run into a csv file
 def log_model_info(model_info, path):
@@ -183,18 +189,18 @@ def decay(epoch):
     return learning_rate/100
 
 # base dict of values to log for each run. Some values are common to every run
-base_dict = {'Recurrance length':-1,'LSTM Units':16,'Embedding Dimension':0,'FF model shape':[8,8,4,1],'Initial Learning Rate':learning_rate,'Regularization':"Batch Normalization",'Metric':"mse",'Training loss':-1,'Val loss':-1,
+base_dict = {'Recurrence length':-1,'LSTM Units':16,'Embedding Dimension':0,'FF model shape':[8,8,4,1],'Initial Learning Rate':learning_rate,'Regularization':"Batch Normalization",'Metric':"mse",'Training loss':-1,'Val loss':-1,
              'time_start':-1,'time_duration':-1,'Epochs':EPOCHS,'Columns':['day_of_week','avg_employees','perc_hours_today_before',
              'perc_hours_yesterday_before', 'perc_hours_tomorrow_before'],'LSTM type':"Conditioned",'user':"asharma"}
 
-# Worker function for multiprocessing Process. Trains an RNN with the specified recurrance length
-def train_and_test_models(recurrance_length,lstm_units,dense_shape,embed_dim):
-    print(f"Started process with recurrance length: {recurrance_length}")
+# Worker function for multiprocessing Process. Trains an RNN with the specified recurrence length
+def train_and_test_models(recurrence_length,lstm_units,dense_shape,embed_dim):
+    print(f"Started process with recurrence length: {recurrence_length}")
     trainSet,valSet,vocab = get_data()
     start_time = time.time()
     start_date = datetime.datetime.now()
     with tf.device('/cpu:0'):
-        model = RNN_Conditioned(recurrance_length,lstm_units,dense_shape,embed_dim,vocab)
+        model = RNN_Conditioned(recurrence_length,lstm_units,dense_shape,embed_dim,vocab)
         model.compile(loss=tf.keras.losses.MeanSquaredError(),
             optimizer=tf.keras.optimizers.Adam(),
             metrics=[tf.keras.metrics.MeanAbsoluteError()])
@@ -207,7 +213,7 @@ def train_and_test_models(recurrance_length,lstm_units,dense_shape,embed_dim):
     param_dict = base_dict.copy()
     time_taken = str(datetime.timedelta(seconds=(time.time()-start_time)))
     train_loss = history.history['loss'][EPOCHS-1]
-    param_dict['Recurrance length'] = recurrance_length
+    param_dict['Recurrence length'] = recurrence_length
     param_dict['LSTM Units'] = lstm_units
     param_dict['Embedding Dimension'] = embed_dim
     param_dict['FF model shape'] = dense_shape
