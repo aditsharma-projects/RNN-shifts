@@ -44,15 +44,15 @@ def expand_one_hot(labels,dataset):
 
 #Loads and preprocesses data from training_set.csv and crossvalidation_set.csv
 def get_data():
-    #nRows = 10000
+    nrows = None
     include_fields = ['hours','prov_id','day_of_week','avg_employees','perc_hours_today_before',
                       'perc_hours_yesterday_before', 'perc_hours_tomorrow_before']
     for i in range(1,LAGGED_DAYS+1):
         ##Inserts recurrence block starting at index 2
         include_fields.insert(i+1,f"hours_l{i}")
     
-    train = pd.read_csv("/export/storage_adgandhi/PBJhours_ML/Data/Intermediate/train_test_validation/training_set.csv",usecols=include_fields).dropna()
-    val = pd.read_csv("/export/storage_adgandhi/PBJhours_ML/Data/Intermediate/train_test_validation/crossvalidation_set.csv",usecols=include_fields).dropna()
+    train = pd.read_csv("/export/storage_adgandhi/PBJhours_ML/Data/Intermediate/train_test_validation/training_set_30.csv",nrows=nrows,usecols=include_fields).dropna()
+    val = pd.read_csv("/export/storage_adgandhi/PBJhours_ML/Data/Intermediate/train_test_validation/crossvalidation_set_30.csv",nrows=nrows,usecols=include_fields).dropna()
     
     #Reorder columns to the order specified in include_fields [hours,prov_id,recurrence block,other block]
     train = train.reindex(columns=include_fields)
@@ -215,7 +215,7 @@ def train_and_test_models(recurrance_length,lstm_units,dense_shape,embed_dim):
     param_dict['Val loss'] = valLoss
     param_dict['time_start'] = start_date
     param_dict['time_duration'] = time_taken
-    log_model_info(param_dict,'/users/facsupport/asharma/RNN-shifts/rnn_tuning_history.csv')
+    log_model_info(param_dict,'rnn_tuning_history.csv')
     print("COMPLETED WORK")
 
 #train_and_test_models(14,16,[8,4,1],0)    
@@ -225,7 +225,7 @@ units = [16,32]
 tasks = []
 for shape in shapes:
     for size in units:  
-        tasks.append(Process(target=train_and_test_models,args=(14,size,shape,10)))
+        tasks.append(Process(target=train_and_test_models,args=(30,size,shape,10)))
         #tasks.append(Process(target=train_and_test_models,args=(14,size,shape,0)))
 
 for task in tasks:
