@@ -47,6 +47,7 @@ def expand_one_hot(labels,dataset):
     outList.insert(0,dataset)
     output = tf.concat(outList,1)
     return output
+
 #Appends a mask equal to LAGGED_DAYS to distinguish nan values from 0
 def mask_nan(frame):
     mask = frame.isna()
@@ -181,9 +182,12 @@ class RNN_Conditioned(tf.keras.Model):
     
     #define model architecture
     def call(self, inputs, training=False):
-        #prov_id is first column
-        time_series = tf.reverse(tf.expand_dims(inputs[:,index_dict['recurrence_start']:index_dict['recurrence_start']+self.recurrence_length],2),[1])
+        series = tf.reverse(inputs[:,index_dict['recurrence_start']:index_dict['recurrence_start']+self.recurrence_length],[1])
+        mask = tf.reverse(inputs[:,index_dict['mask_start']:index_dict['mask_start']+self.recurrence_length],[1])
+        series = tf.expand_dims(series,2)
+        mask = tf.expand_dims(mask,2)
         
+        time_series = tf.concat([series,mask],2)
         additional_inputs = inputs[:,index_dict['descriptors_start']:]
         transformed_inputs = self.transform(additional_inputs)
         if self.embed_dim != 0:    
@@ -217,13 +221,16 @@ base_dict = {'Recurrence length':-1,'LSTM Units':-1,'Embedding Dimension':-1,'FF
              'perc_hours_yesterday_before', 'perc_hours_tomorrow_before'],'LSTM type':"Unconditioned",'user':"asharma"}
 
 # Worker function for multiprocessing Process. Trains an RNN with the specified recurrence length
-def train_and_test_models(recurrence_length,lstm_units,dense_shape,embed_dim):
+def train_and_test_models(recurrence_length,lstm_units,dense_shape,embed_dim,lstm_type):
     print(f"Started process with recurrence length: {recurrence_length}")
     trainSet,valSet,vocab = get_data()
     start_time = time.time()
     start_date = datetime.datetime.now()
     with tf.device('/cpu:0'):
-        model = RNN(recurrence_length,lstm_units,dense_shape,embed_dim,vocab)
+        if lstm_type == "Unconditioned":
+            model = RNN(recurrence_length,lstm_units,dense_shape,embed_dim,vocab)
+        else
+            model = RNN_Conditioned(recurrence_length,lstm_units,dense_shape,embed_dim,vocab)
         model.compile(loss=tf.keras.losses.MeanSquaredError(),
             optimizer=tf.keras.optimizers.Adam(),
             metrics=[tf.keras.metrics.MeanAbsoluteError()])
@@ -233,8 +240,10 @@ def train_and_test_models(recurrence_length,lstm_units,dense_shape,embed_dim):
         history = model.fit(trainSet, epochs=EPOCHS, callbacks=callbacks,verbose=0)
         valLoss, metric = model.evaluate(valSet)
    
-    param_dict = base_dict.copy()
     time_taken = str(datetime.timedelta(seconds=(time.time()-start_time)))
+    
+    #Store values of run into dict
+    param_dict = base_dict.copy()
     train_loss = history.history['loss'][EPOCHS-1]
     param_dict['Recurrence length'] = recurrence_length
     param_dict['LSTM Units'] = lstm_units
@@ -244,6 +253,7 @@ def train_and_test_models(recurrence_length,lstm_units,dense_shape,embed_dim):
     param_dict['Val loss'] = valLoss
     param_dict['time_start'] = start_date
     param_dict['time_duration'] = time_taken
+    param_dict['LSTM type'] = lstm_type
     log_model_info(param_dict,'/users/facsupport/asharma/RNN-shifts/rnn_tuning_history.csv')
     print("COMPLETED WORK")
 
@@ -254,7 +264,7 @@ units = [32]
 tasks = []
 for shape in shapes:
     for size in units:  
-        tasks.append(Process(target=train_and_test_models,args=(30,size,shape,0)))
+        tasks.append(Process(target=train_and_test_models,args=(30,size,shape,0,"Unconditioned")))
         #tasks.append(Process(target=train_and_test_models,args=(14,size,shape,0)))
 
 for task in tasks:
