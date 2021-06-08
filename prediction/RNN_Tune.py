@@ -7,7 +7,7 @@ import numpy as np
 import sys
 
 LAGGED_DAYS = 30
-index_dict = {'prov_id':0,'recurrence_start':1,'descriptors_start':LAGGED_DAYS+1}
+index_dict = {'prov_id':0,'recurrence_start':1,'mask_start':LAGGED_DAYS+1,'descriptors_start':2*LAGGED_DAYS+1}
 
 # Make print flush by default
 def print(*objects, sep=' ', end='\n', file=sys.stdout, flush=True):
@@ -47,6 +47,14 @@ def expand_one_hot(labels,dataset):
     outList.insert(0,dataset)
     output = tf.concat(outList,1)
     return output
+#Appends a mask equal to LAGGED_DAYS to distinguish nan values from 0
+def mask_nan(frame):
+    mask = frame.isna()
+    #Input frame is arranged as follows: 'hours','prov_id',recurrance block,other block
+    for i in range(1,LAGGED_DAYS+1):
+        frame.insert(1+LAGGED_DAYS+i,f"mask_{i}",mask[f"hours_l{i}"].astype(int).astype('float32'))
+    frame = frame.fillna(0)
+    return frame
 
 #Loads and preprocesses data from training_set.csv and crossvalidation_set.csv
 def get_data():
@@ -57,13 +65,18 @@ def get_data():
         ##Inserts recurrence block starting at index 2
         include_fields.insert(i+1,f"hours_l{i}")
     
-    train = pd.read_csv("/export/storage_adgandhi/PBJhours_ML/Data/Intermediate/train_test_validation/training_set_30.csv",nrows=nrows,usecols=include_fields).dropna()
-    val = pd.read_csv("/export/storage_adgandhi/PBJhours_ML/Data/Intermediate/train_test_validation/crossvalidation_set_30.csv",nrows=nrows,usecols=include_fields).dropna()
+    train = pd.read_csv("/export/storage_adgandhi/PBJhours_ML/Data/Intermediate/train_test_validation/training_set_30.csv",nrows=nrows,usecols=include_fields)
+    val = pd.read_csv("/export/storage_adgandhi/PBJhours_ML/Data/Intermediate/train_test_validation/crossvalidation_set_30.csv",nrows=nrows,usecols=include_fields)
     
     #Reorder columns to the order specified in include_fields [hours,prov_id,recurrence block,other block]
     train = train.reindex(columns=include_fields)
     val = val.reindex(columns=include_fields)
     
+    #Mask nan values
+    train = mask_nan(train)
+    val = mask_nan(val)
+    
+    #Separate predictors and labels
     train_inputs, train_labels = train.drop(['hours'], axis=1), train.filter(['hours'])
     val_inputs, val_labels = val.drop(['hours'], axis=1), val.filter(['hours'])
 
@@ -119,8 +132,12 @@ class RNN(tf.keras.Model):
     
     #define model architecture
     def call(self, inputs, training=False):
-        #prov_id is first column
-        time_series = tf.reverse(tf.expand_dims(inputs[:,index_dict['recurrence_start']:index_dict['recurrence_start']+self.recurrence_length],2),[1])
+        series = tf.reverse(inputs[:,index_dict['recurrence_start']:index_dict['recurrence_start']+self.recurrence_length],[1])
+        mask = tf.reverse(inputs[:,index_dict['mask_start']:index_dict['mask_start']+self.recurrence_length],[1])
+        series = tf.expand_dims(series,2)
+        mask = tf.expand_dims(mask,2)
+        
+        time_series = tf.concat([series,mask],2)
         additional_inputs = inputs[:,index_dict['descriptors_start']:]
         
         x = self.lstm(time_series)
@@ -133,6 +150,13 @@ class RNN(tf.keras.Model):
             x = layer(x)
         
         return self.out(x)
+    
+    #def format_time_series(inputs):
+        #series = tf.reverse(inputs[:,index_dict['recurrence_start']:index_dict['recurrence_start']+self.recurrence_length],[1])
+        #mask = tf.reverse(inputs[:,index_dict['mask_start']:index_dict['mask_start']+self.recurrence_length],[1])
+        #series = tf.expand_dims(series,2)
+        #mask = tf.expand_dims(mask,2)
+        #return tf.concat([series,mask],2)
 
 class RNN_Conditioned(tf.keras.Model):
     #define all components of model
@@ -159,7 +183,6 @@ class RNN_Conditioned(tf.keras.Model):
     def call(self, inputs, training=False):
         #prov_id is first column
         time_series = tf.reverse(tf.expand_dims(inputs[:,index_dict['recurrence_start']:index_dict['recurrence_start']+self.recurrence_length],2),[1])
-        additional_inputs = inputs[:,index_dict['descriptors_start']:]
         
         additional_inputs = inputs[:,index_dict['descriptors_start']:]
         transformed_inputs = self.transform(additional_inputs)
@@ -189,9 +212,9 @@ def decay(epoch):
     return learning_rate/100
 
 # base dict of values to log for each run. Some values are common to every run
-base_dict = {'Recurrence length':-1,'LSTM Units':16,'Embedding Dimension':0,'FF model shape':[8,8,4,1],'Initial Learning Rate':learning_rate,'Regularization':"Batch Normalization",'Metric':"mse",'Training loss':-1,'Val loss':-1,
+base_dict = {'Recurrence length':-1,'LSTM Units':-1,'Embedding Dimension':-1,'FF model shape':[],'Initial Learning Rate':learning_rate,'Regularization':"Batch Normalization",'Metric':"mse",'Training loss':-1,'Val loss':-1,
              'time_start':-1,'time_duration':-1,'Epochs':EPOCHS,'Columns':['day_of_week','avg_employees','perc_hours_today_before',
-             'perc_hours_yesterday_before', 'perc_hours_tomorrow_before'],'LSTM type':"Conditioned",'user':"asharma"}
+             'perc_hours_yesterday_before', 'perc_hours_tomorrow_before'],'LSTM type':"Unconditioned",'user':"asharma"}
 
 # Worker function for multiprocessing Process. Trains an RNN with the specified recurrence length
 def train_and_test_models(recurrence_length,lstm_units,dense_shape,embed_dim):
@@ -200,7 +223,7 @@ def train_and_test_models(recurrence_length,lstm_units,dense_shape,embed_dim):
     start_time = time.time()
     start_date = datetime.datetime.now()
     with tf.device('/cpu:0'):
-        model = RNN_Conditioned(recurrence_length,lstm_units,dense_shape,embed_dim,vocab)
+        model = RNN(recurrence_length,lstm_units,dense_shape,embed_dim,vocab)
         model.compile(loss=tf.keras.losses.MeanSquaredError(),
             optimizer=tf.keras.optimizers.Adam(),
             metrics=[tf.keras.metrics.MeanAbsoluteError()])
@@ -209,7 +232,7 @@ def train_and_test_models(recurrence_length,lstm_units,dense_shape,embed_dim):
         ]
         history = model.fit(trainSet, epochs=EPOCHS, callbacks=callbacks,verbose=0)
         valLoss, metric = model.evaluate(valSet)
-
+   
     param_dict = base_dict.copy()
     time_taken = str(datetime.timedelta(seconds=(time.time()-start_time)))
     train_loss = history.history['loss'][EPOCHS-1]
@@ -221,17 +244,17 @@ def train_and_test_models(recurrence_length,lstm_units,dense_shape,embed_dim):
     param_dict['Val loss'] = valLoss
     param_dict['time_start'] = start_date
     param_dict['time_duration'] = time_taken
-    log_model_info(param_dict,'rnn_tuning_history.csv')
+    log_model_info(param_dict,'/users/facsupport/asharma/RNN-shifts/rnn_tuning_history.csv')
     print("COMPLETED WORK")
 
 #train_and_test_models(14,16,[8,4,1],0)    
     
-shapes = [[16,8,1],[8,8,8,1],[1],[8,1]]
-units = [16,32]
+shapes = [[16,8,1],[1],[8,1]]
+units = [32]
 tasks = []
 for shape in shapes:
     for size in units:  
-        tasks.append(Process(target=train_and_test_models,args=(30,size,shape,10)))
+        tasks.append(Process(target=train_and_test_models,args=(30,size,shape,0)))
         #tasks.append(Process(target=train_and_test_models,args=(14,size,shape,0)))
 
 for task in tasks:
