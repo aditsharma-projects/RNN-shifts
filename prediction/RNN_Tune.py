@@ -5,9 +5,12 @@ import tensorflow as tf
 from multiprocessing import Process
 import numpy as np
 import sys
+import multiprocessing as mp
+from multiprocessing import Pool
 
 LAGGED_DAYS = 30
 index_dict = {'prov_id':0,'recurrence_start':1,'mask_start':LAGGED_DAYS+1,'descriptors_start':2*LAGGED_DAYS+1}
+LOG_PATH = '/users/facsupport/asharma/RNN-shifts/rnn_tuning_history_test.csv'
 
 # Make print flush by default
 def print(*objects, sep=' ', end='\n', file=sys.stdout, flush=True):
@@ -23,7 +26,9 @@ def log_model_info(model_info, path):
 
     new_df = pd.DataFrame({k: [v] for k, v in model_info.items()})
     df = pd.concat([df, new_df], axis=0)
+    df = df.sort_values(by='Val loss')
     df.to_csv(path, index=False)
+          
     
 #Expand categorical variables enumerated in labels to one-hot encodings
 #Takes in pandas dataframe and returns tf tensor 
@@ -48,7 +53,7 @@ def expand_one_hot(labels,dataset):
     output = tf.concat(outList,1)
     return output
 
-#Appends a mask equal to LAGGED_DAYS to distinguish nan values from 0
+#Inserts a mask equal to LAGGED_DAYS to distinguish nan values from 0
 def mask_nan(frame):
     mask = frame.isna()
     #Input frame is arranged as follows: 'hours','prov_id',recurrance block,other block
@@ -59,7 +64,7 @@ def mask_nan(frame):
 
 #Loads and preprocesses data from training_set.csv and crossvalidation_set.csv
 def get_data():
-    nrows = None
+    nrows = 10000
     include_fields = ['hours','prov_id','day_of_week','avg_employees','perc_hours_today_before',
                       'perc_hours_yesterday_before', 'perc_hours_tomorrow_before']
     for i in range(1,LAGGED_DAYS+1):
@@ -135,10 +140,8 @@ class RNN(tf.keras.Model):
     def call(self, inputs, training=False):
         series = tf.reverse(inputs[:,index_dict['recurrence_start']:index_dict['recurrence_start']+self.recurrence_length],[1])
         mask = tf.reverse(inputs[:,index_dict['mask_start']:index_dict['mask_start']+self.recurrence_length],[1])
-        series = tf.expand_dims(series,2)
-        mask = tf.expand_dims(mask,2)
         
-        time_series = tf.concat([series,mask],2)
+        time_series = tf.concat([tf.expand_dims(series,2),tf.expand_dims(mask,2)],2)
         additional_inputs = inputs[:,index_dict['descriptors_start']:]
         
         x = self.lstm(time_series)
@@ -184,10 +187,8 @@ class RNN_Conditioned(tf.keras.Model):
     def call(self, inputs, training=False):
         series = tf.reverse(inputs[:,index_dict['recurrence_start']:index_dict['recurrence_start']+self.recurrence_length],[1])
         mask = tf.reverse(inputs[:,index_dict['mask_start']:index_dict['mask_start']+self.recurrence_length],[1])
-        series = tf.expand_dims(series,2)
-        mask = tf.expand_dims(mask,2)
         
-        time_series = tf.concat([series,mask],2)
+        time_series = tf.concat([tf.expand_dims(series,2),tf.expand_dims(mask,2)],2)
         additional_inputs = inputs[:,index_dict['descriptors_start']:]
         transformed_inputs = self.transform(additional_inputs)
         if self.embed_dim != 0:    
@@ -198,7 +199,6 @@ class RNN_Conditioned(tf.keras.Model):
         h_0 = transformed_inputs
         x = self.lstm(time_series, initial_state=[h_0,c_0])
            
-       
         for layer in self.dense_layers:
             x = layer(x)
         
@@ -222,14 +222,14 @@ base_dict = {'Recurrence length':-1,'LSTM Units':-1,'Embedding Dimension':-1,'FF
 
 # Worker function for multiprocessing Process. Trains an RNN with the specified recurrence length
 def train_and_test_models(recurrence_length,lstm_units,dense_shape,embed_dim,lstm_type):
-    print(f"Started process with recurrence length: {recurrence_length}")
+    #print(f"Started process with recurrence length: {recurrence_length}")
     trainSet,valSet,vocab = get_data()
     start_time = time.time()
     start_date = datetime.datetime.now()
     with tf.device('/cpu:0'):
         if lstm_type == "Unconditioned":
             model = RNN(recurrence_length,lstm_units,dense_shape,embed_dim,vocab)
-        else
+        else:
             model = RNN_Conditioned(recurrence_length,lstm_units,dense_shape,embed_dim,vocab)
         model.compile(loss=tf.keras.losses.MeanSquaredError(),
             optimizer=tf.keras.optimizers.Adam(),
@@ -254,20 +254,61 @@ def train_and_test_models(recurrence_length,lstm_units,dense_shape,embed_dim,lst
     param_dict['time_start'] = start_date
     param_dict['time_duration'] = time_taken
     param_dict['LSTM type'] = lstm_type
-    log_model_info(param_dict,'/users/facsupport/asharma/RNN-shifts/rnn_tuning_history.csv')
-    print("COMPLETED WORK")
+    log_model_info(param_dict,LOG_PATH)
+    #print("COMPLETED WORK")
+    return valLoss
 
 #train_and_test_models(14,16,[8,4,1],0)    
     
-shapes = [[16,8,1],[1],[8,1]]
-units = [32]
-tasks = []
-for shape in shapes:
-    for size in units:  
-        tasks.append(Process(target=train_and_test_models,args=(30,size,shape,0,"Unconditioned")))
+#shapes = [[16,8,1],[1],[8,1]]
+#units = [32]
+#tasks = []
+#for shape in shapes:
+#    for size in units:  
+#        tasks.append(Process(target=train_and_test_models,args=(30,size,shape,0,"Unconditioned")))
         #tasks.append(Process(target=train_and_test_models,args=(14,size,shape,0)))
 
-for task in tasks:
-    task.start()
-for task in tasks:
-    task.join()
+#for task in tasks:
+#    task.start()
+#for task in tasks:
+#    task.join()
+    
+def list_helper(x,mult):
+    outList = [y*mult for y in x]
+    outList = outList + [1]
+    return outList
+
+def gen_perm(units,shapes,embeddings):
+    out = []
+    for size in units:
+        for shape in shapes:
+            for embed in embeddings:
+                ##Important note: lstm_units must be > embed_sizes
+                if embed >= size:
+                    continue
+                out.append((LAGGED_DAYS,size,shape,embed,"Unconditioned"))
+                out.append((LAGGED_DAYS,size,shape,embed,"Conditioned")) 
+    return out
+
+def autotune():
+    shape_ratios = [[1],[1,1],[2,1],[3,1],[4,1],[1,1,1],[2,1,1],[2,2,1],[3,2,1],[4,2,1],[4,4,1],[1,1,1,1],
+                    [2,1,1,1],[4,2,1,1],[8,4,2,1],[8,4,4,1],[8,8,4,1],[8,8,8,1],[16,8,4,1],[16,16,8,1]]
+    embed_sizes = [0,5,10,20,50,100]
+    lstm_units = [8,16,32,64,128]
+    
+    bestLoss = 1000
+    for mult in range(2,9):
+        shapes = [list_helper(x,mult) for x in shape_ratios]
+        work_list = gen_perm(lstm_units,shapes,embed_sizes)
+        with mp.Pool(processes=15) as pool:
+            results = pool.starmap(train_and_test_models,work_list)
+            if min(results) <= bestLoss:
+                bestLoss = min(results)
+            else:
+                break
+    
+    return bestLoss
+            
+if __name__ == '__main__':
+    optimum = autotune()
+    print(f"Best Validation Loss: {optimum}")
