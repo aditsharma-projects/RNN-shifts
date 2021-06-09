@@ -10,7 +10,7 @@ from multiprocessing import Pool
 
 LAGGED_DAYS = 30
 index_dict = {'prov_id':0,'recurrence_start':1,'mask_start':LAGGED_DAYS+1,'descriptors_start':2*LAGGED_DAYS+1}
-LOG_PATH = '/users/facsupport/asharma/RNN-shifts/rnn_tuning_history_test.csv'
+LOG_PATH = '/users/facsupport/asharma/RNN-shifts/rnn_autotuning_history.csv'
 
 # Make print flush by default
 def print(*objects, sep=' ', end='\n', file=sys.stdout, flush=True):
@@ -64,7 +64,7 @@ def mask_nan(frame):
 
 #Loads and preprocesses data from training_set.csv and crossvalidation_set.csv
 def get_data():
-    nrows = 10000
+    nrows = None
     include_fields = ['hours','prov_id','day_of_week','avg_employees','perc_hours_today_before',
                       'perc_hours_yesterday_before', 'perc_hours_tomorrow_before']
     for i in range(1,LAGGED_DAYS+1):
@@ -278,36 +278,63 @@ def list_helper(x,mult):
     outList = outList + [1]
     return outList
 
-def gen_perm(units,shapes,embeddings):
+#Returns permutation corresponding to startCoords + its 4 greater neighbors
+def gen_perm(startCoords,units,shape_ratios,embeddings,multiplier):
     out = []
-    for size in units:
-        for shape in shapes:
-            for embed in embeddings:
-                ##Important note: lstm_units must be > embed_sizes
-                if embed >= size:
-                    continue
-                out.append((LAGGED_DAYS,size,shape,embed,"Unconditioned"))
-                out.append((LAGGED_DAYS,size,shape,embed,"Conditioned")) 
-    return out
+    coord_list = []
+    fields_list = [units,shape_ratios,embeddings,multiplier]
+    for i in range(-1,4):    
+        if i!=-1:
+            startCoords[i] += 1  
+        if startCoords[i] >= len(fields_list[i]):
+            startCoords[i] -= 1
+            continue
+        if embeddings[startCoords[2]] >= units[startCoords[0]]:
+            startCoords[i] -= 1
+            continue
+        shapes = [list_helper(x,multiplier[startCoords[3]]) for x in shape_ratios]
+        out.append((LAGGED_DAYS,units[startCoords[0]],shapes[startCoords[1]],
+                    embeddings[startCoords[2]],"Unconditioned"))
+        out.append((LAGGED_DAYS,units[startCoords[0]],shapes[startCoords[1]],
+                    embeddings[startCoords[2]],"Conditioned"))
+        coord_list.append(startCoords)
+        coord_list.append(startCoords)
+        if i!=-1:
+            startCoords[i] -= 1
+    
+    return out,coord_list
 
 def autotune():
     shape_ratios = [[1],[1,1],[2,1],[3,1],[4,1],[1,1,1],[2,1,1],[2,2,1],[3,2,1],[4,2,1],[4,4,1],[1,1,1,1],
                     [2,1,1,1],[4,2,1,1],[8,4,2,1],[8,4,4,1],[8,8,4,1],[8,8,8,1],[16,8,4,1],[16,16,8,1]]
     embed_sizes = [0,5,10,20,50,100]
     lstm_units = [8,16,32,64,128]
+    mult = [2,3,4,5,6,7,8]
     
-    bestLoss = 1000
-    for mult in range(2,9):
-        shapes = [list_helper(x,mult) for x in shape_ratios]
-        work_list = gen_perm(lstm_units,shapes,embed_sizes)
-        with mp.Pool(processes=15) as pool:
+    #shape_ratios = [[1],[1,1],[2,1],[16,8,4,1],[16,16,8,1]]
+    #embed_sizes = [0,10]
+    #lstm_units = [8,16,32]
+    #mult = [2,3,4]
+    ######
+    best_loss = 1000               
+    improving = True              
+    startCoords = [0,0,0,0]
+    while(improving):
+        improving = False           
+        work_list, coords_list = gen_perm(startCoords,lstm_units,shape_ratios,embed_sizes,mult)
+        with mp.Pool(processes=5) as pool:           
             results = pool.starmap(train_and_test_models,work_list)
-            if min(results) <= bestLoss:
-                bestLoss = min(results)
-            else:
-                break
+            best_loss = results[0]
+            for i in range(len(results)):
+                delta_loss = results[i] - best_loss
+                if delta_loss < 0:
+                    best_loss = results[i]
+                    startCoords = coords_list[i]
+                    improving = True
+                
+    ######
     
-    return bestLoss
+    return best_loss
             
 if __name__ == '__main__':
     optimum = autotune()
