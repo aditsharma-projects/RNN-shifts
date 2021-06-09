@@ -13,15 +13,15 @@ import os
 ROWS = None
 
 # Paths to data files
-TRAIN_FILE = "/export/storage_adgandhi/PBJhours_ML/Data/Intermediate/train_test_validation/training_set.csv"
-VAL_FILE = "/export/storage_adgandhi/PBJhours_ML/Data/Intermediate/train_test_validation/crossvalidation_set.csv"
-TEST_FILE = "/export/storage_adgandhi/PBJhours_ML/Data/Intermediate/train_test_validation/holdout_set.csv"
+TRAIN_FILE = "/export/storage_adgandhi/PBJhours_ML/Data/Intermediate/train_test_validation/training_set_30.csv"
+VAL_FILE = "/export/storage_adgandhi/PBJhours_ML/Data/Intermediate/train_test_validation/crossvalidation_set_30.csv"
+TEST_FILE = "/export/storage_adgandhi/PBJhours_ML/Data/Intermediate/train_test_validation/holdout_set_30.csv"
 
 # Path to CSV for model tuning history
-HISTORY_FILE = "/users/facsupport/rtjoa/model_history.csv"
+HISTORY_FILE = "/users/facsupport/rtjoa/lgb_model_30.csv"
 
 # Path to directory for feature importance plots
-FIGURES_FOLDER = "figures"
+FIGURES_FOLDER = "figures_30"
 
 # Columns to pull from data files and their corresponding types
 COLUMNS = {
@@ -41,6 +41,8 @@ COLUMNS = {
     "hours_l6": np.double,
     "hours_l7": np.double,
     "hours_l14": np.double,
+    "hours_l21": np.double,
+    "hours_l28": np.double,
 }
 
 # List of columsn to treat as categorical variables
@@ -177,11 +179,21 @@ else:
     test = pd.read_csv(TEST_FILE, parse_dates=["date"])
 timer_load.done()
 
+added_na_cols = []
+def fix_nas(col):
+    added_na_cols.append(col)
+    for df in [train, val, test]:
+        df[col+'_is_na'] = df[col].isna()
+        df[col] = df[col].fillna(0)
+
 timer_dropna = Timer("Dropping N/A values...")
 for df in [train, val, test]:
     for col, t in COLUMNS.items(): # Cast rows to appropriate type
         df[col] = df[col].astype(t)
-    df.dropna(inplace=True) # Drop all rows with N/A values
+        if df[col].isnull().values.any():
+            fix_nas(col)
+print(f"NA values found in {added_na_cols}. Adding NA flag columns for each.")
+
 timer_dropna.done()
 
 timer_split = Timer("Splitting into inputs and labels...")
@@ -246,6 +258,8 @@ for name in PARAM_AXES:
         model_info['truncate_rows'] = ROWS
         model_info['columns_used'] = ','.join(COLUMNS.keys())
         model_info['user'] = user
+        if added_na_cols:
+            model_info['added_na_cols'] = added_na_cols
         log_model_info(model_info, HISTORY_FILE)
 
         # Save feature importance figures
