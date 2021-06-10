@@ -4,6 +4,7 @@ import lightgbm as lgb
 import datetime
 import getpass
 import os
+import sys
 
 # %%
 #### CONFIGURATION ####
@@ -23,13 +24,21 @@ HISTORY_FILE = "/users/facsupport/rtjoa/lgb_model_30.csv"
 # Path to directory for feature importance plots
 FIGURES_FOLDER = "figures_30"
 
+# Value to fill NA values with
+FILL_NA = -1
+
+# Ensure we don't save truncated output to same place
+if ROWS is not None:
+    HISTORY_FILE += ".temp.csv"
+    FIGURES_FOLDER += "_junk"
+
 # Columns to pull from data files and their corresponding types
 COLUMNS = {
-    "prov_id": "category",
-    "job_title": "category",
-    "pay_type": "category",
+    "prov_id": 'category',
+    "job_title": 'category',
+    "pay_type": 'category',
     "hours": np.double,
-    "day_of_week": "category",
+    "day_of_week": 'category',
     "perc_hours_today_before": np.double,
     "perc_hours_yesterday_before": np.double,
     "perc_hours_tomorrow_before": np.double,
@@ -50,9 +59,9 @@ CATEGORICALS = ['prov_id', 'job_title', 'pay_type', 'day_of_week']
 
 # LightGBM parameters to tune, and options to pick from for each
 PARAM_AXES = {
-    "learning_rate": [0.003, 0.005, 0.01, 0.03],
-    "num_leaves": [2000, 4000, 8000],
-    "min_data_in_leaf": [1, 10, 20, 50, 100],
+    "learning_rate": [0.01],
+    "num_leaves": [4000],
+    "min_data_in_leaf": [20],
 }
 
 # Parameters for LightGBM training. Those also defined in PARAM_AXES above will
@@ -67,7 +76,7 @@ INIT_PARAMS = {
     'verbose': -1,
     'force_row_wise': True,
     'deterministic': True,
-    'num_threads': 50,
+    'num_threads': 25,
 }
 
 # After how many rounds of no improvement in validation loss to stop training,
@@ -78,6 +87,10 @@ EARLY_STOPPING_ROUNDS = 5
 #### UTILITY ####
 
 user = getpass.getuser()
+
+# Force print flushing
+def print(*objects, sep=' ', end='\n', file=sys.stdout, flush=True):
+    __builtins__.print(*objects, sep=sep, end=end, file=file, flush=flush)
 
 # Print string s prominently
 def print_header(s):
@@ -179,20 +192,13 @@ else:
     test = pd.read_csv(TEST_FILE, parse_dates=["date"])
 timer_load.done()
 
-added_na_cols = []
-def fix_nas(col):
-    added_na_cols.append(col)
-    for df in [train, val, test]:
-        df[col+'_is_na'] = df[col].isna()
-        df[col] = df[col].fillna(0)
 
 timer_dropna = Timer("Dropping N/A values...")
 for df in [train, val, test]:
     for col, t in COLUMNS.items(): # Cast rows to appropriate type
+        if FILL_NA is not None:
+            df[col].fillna(FILL_NA)
         df[col] = df[col].astype(t)
-        if df[col].isnull().values.any():
-            fix_nas(col)
-print(f"NA values found in {added_na_cols}. Adding NA flag columns for each.")
 
 timer_dropna.done()
 
@@ -207,6 +213,8 @@ print()
 #### TRAIN AND TUNE ####
 
 params = INIT_PARAMS.copy()
+
+desc_to_val_loss = {}
 
 # Tune one param at a time
 for name in PARAM_AXES:
@@ -225,52 +233,55 @@ for name in PARAM_AXES:
         val_data = lgb.Dataset(val_inputs, label=val_labels, categorical_feature=CATEGORICALS)
         
         # Short descriptor, made up of params being tuned
-        desc = ", ".join(f"{k}:{v}" for k, v in params.items() if k in PARAM_AXES)
+        desc = ", ".join(f"{k}:{v}" for k, v in sorted(params.items()) if k in PARAM_AXES)
         
-        # Train!
-        timer_train = Timer(f"Training ({desc})...")        
-        evals_result = {}
-        bst = lgb.train(params, train_data,
-            valid_sets=[val_data],
-            valid_names=['val_data'],
-            evals_result=evals_result,
-            early_stopping_rounds=EARLY_STOPPING_ROUNDS,
-            num_boost_round=10**5,
-            categorical_feature=CATEGORICALS,
-            verbose_eval=False,
-        )
-        training_loss = ((bst.predict(train_inputs) - train_labels['hours'])**2).mean()
-        val_loss = ((bst.predict(val_inputs) - val_labels['hours'])**2).mean()
-        num_trees = bst.num_trees()
-        chosen_iter, total_iters = bst.current_iteration(), len(evals_result['val_data']['l2'])
-        timer_train.done(f"chose iter {chosen_iter}/{total_iters} ({num_trees} trees) in %s.")
-        print(f"Training loss: {training_loss:.5f} | Val loss: {val_loss:.5f}")
-        print()
+        # Train, if we have not already tested this config
+        if desc not in desc_to_val_loss:
+            timer_train = Timer(f"Training ({desc})...")        
+            evals_result = {}
+            bst = lgb.train(params, train_data,
+                valid_sets=[val_data],
+                valid_names=['val_data'],
+                evals_result=evals_result,
+                early_stopping_rounds=EARLY_STOPPING_ROUNDS,
+                num_boost_round=10**5,
+                categorical_feature=CATEGORICALS,
+                verbose_eval=False,
+            )
+            training_loss = ((bst.predict(train_inputs) - train_labels['hours'])**2).mean()
+            val_loss = ((bst.predict(val_inputs) - val_labels['hours'])**2).mean()
+            num_trees = bst.num_trees()
+            chosen_iter, total_iters = bst.current_iteration(), len(evals_result['val_data']['l2'])
+            timer_train.done(f"chose iter {chosen_iter}/{total_iters} ({num_trees} trees) in %s.")
+            print(f"Training loss: {training_loss:.5f} | Val loss: {val_loss:.5f}")
+            print()
 
-        # Save model info and performance
-        model_info = params.copy()
-        model_info['training_loss'] = training_loss
-        model_info['val_loss'] = val_loss
-        model_info['num_trees'] = num_trees
-        model_info['time_start'] = timer_train.start_time
-        model_info['time_duration'] = timer_train.duration
-        model_info['iterations'] = bst.current_iteration()
-        model_info['truncate_rows'] = ROWS
-        model_info['columns_used'] = ','.join(COLUMNS.keys())
-        model_info['user'] = user
-        if added_na_cols:
-            model_info['added_na_cols'] = added_na_cols
-        log_model_info(model_info, HISTORY_FILE)
+            # Save model info and performance
+            model_info = params.copy()
+            model_info['training_loss'] = training_loss
+            model_info['val_loss'] = val_loss
+            model_info['num_trees'] = num_trees
+            model_info['time_start'] = timer_train.start_time
+            model_info['time_duration'] = timer_train.duration
+            model_info['iterations'] = bst.current_iteration()
+            model_info['truncate_rows'] = ROWS
+            model_info['fill_na'] = FILL_NA
+            model_info['columns_used'] = ','.join(COLUMNS.keys())
+            model_info['user'] = user
+            log_model_info(model_info, HISTORY_FILE)
 
-        # Save feature importance figures
-        if os.path.isdir(FIGURES_FOLDER):
-            fig_path = os.path.join(FIGURES_FOLDER, f"{desc}.png")
-            lgb.plot_importance(bst).get_figure().savefig(fig_path)
+            # Save feature importance figures
+            if os.path.isdir(FIGURES_FOLDER):
+                fig_path = os.path.join(FIGURES_FOLDER, f"{desc}.png")
+                lgb.plot_importance(bst).get_figure().savefig(fig_path)
 
+            desc_to_val_loss[desc] = val_loss
+        else:
+            print(f"Already trained this config ({desc})")
         # Track ideal value for this param
-        if val_loss < best_loss:
+        if desc_to_val_loss[desc] < best_loss:
             best_value = value
-            best_loss = val_loss
+            best_loss = desc_to_val_loss[desc]
             
     print(f"Choosing {best_value} for {name} (val loss: {best_loss}).")
     print()
