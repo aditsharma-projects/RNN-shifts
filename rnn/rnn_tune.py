@@ -216,14 +216,23 @@ def decay(epoch):
 # base dict of values to log for each run. Some values are common to every run
 base_dict = {'Recurrence length':-1,'LSTM Units':-1,'Embedding Dimension':-1,'FF model shape':[],'Initial Learning Rate':learning_rate,'Regularization':"Batch Normalization",'Metric':"mse",'Training loss':-1,'Val loss':-1,
              'time_start':-1,'time_duration':-1,'Epochs':EPOCHS,'Columns':['day_of_week','avg_employees','perc_hours_today_before',
-             'perc_hours_yesterday_before', 'perc_hours_tomorrow_before'],'LSTM type':"Unconditioned",'user':"asharma"}
+             'perc_hours_yesterday_before', 'perc_hours_tomorrow_before'],'LSTM type':"Unconditioned",'user':"asharma",'coordinates':[]}
+
+# helper function for lines 228 and 229
+def hash_coordinates(coords):
+    return int(coords[1]) + int(coords[4])*10 + int(coords[7])*100 + int(coords[10])*1000
 
 # Worker function for multiprocessing Process. Trains an RNN with the specified recurrence length
-def train_and_test_models(ns,recurrence_length,lstm_units,dense_shape,embed_dim,lstm_type):
+def train_and_test_models(ns,recurrence_length,lstm_units,dense_shape,embed_dim,lstm_type,coordinates):
+    #Check if we've already tested this run
+    log_file = pd.read_csv(LOG_PATH)
+    log_file['coordinates'] = log_file['coordinates'].apply(hash_coordinates)
+    if hash_coordinates(str(coordinates)) in log_file['coordinates']: 
+        return 10000
+    
     #restrict each process to 10 cores
     tf.config.threading.set_intra_op_parallelism_threads(10)
     tf.config.threading.set_inter_op_parallelism_threads(10)
-
     
     #trainSet,valSet,vocab = get_data()
     trainSet,valSet,vocab = preprocess_data(ns.train,ns.val)
@@ -258,6 +267,7 @@ def train_and_test_models(ns,recurrence_length,lstm_units,dense_shape,embed_dim,
     param_dict['time_start'] = start_date
     param_dict['time_duration'] = time_taken
     param_dict['LSTM type'] = lstm_type
+    param_dict['coordinates'] = coordinates
     log_model_info(param_dict,LOG_PATH)
     #print("COMPLETED WORK")
     return valLoss
@@ -282,9 +292,9 @@ def gen_perm(ns,startCoords,units,shape_ratios,embeddings,multiplier):
             continue
         shapes = [list_helper(x,multiplier[currCoords[3]]) for x in shape_ratios]
         out.append((ns,LAGGED_DAYS,units[currCoords[0]],shapes[currCoords[1]],
-                    embeddings[currCoords[2]],"Unconditioned"))
+                    embeddings[currCoords[2]],"Unconditioned",currCoords))
         out.append((ns,LAGGED_DAYS,units[currCoords[0]],shapes[currCoords[1]],
-                    embeddings[currCoords[2]],"Conditioned"))
+                    embeddings[currCoords[2]],"Conditioned",currCoords))
         coord_list.append(currCoords)
         coord_list.append(currCoords)
         
@@ -301,7 +311,8 @@ def autotune(ns,shape_ratios,embed_sizes,lstm_units,mult):
         print(coords_list)
         with mp.Pool(processes=5) as pool:           
             results = pool.starmap(train_and_test_models,work_list)
-            best_loss = results[0]
+            if results[0] < best_loss:
+                best_loss = results[0]
             for i in range(len(results)):
                 delta_loss = results[i] - best_loss
                 if delta_loss < 0:
