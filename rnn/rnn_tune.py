@@ -7,6 +7,7 @@ import numpy as np
 import sys
 import multiprocessing as mp
 from multiprocessing import Pool
+from multiprocessing import Manager
 
 LAGGED_DAYS = 30
 index_dict = {'prov_id':0,'recurrence_start':1,'mask_start':LAGGED_DAYS+1,'descriptors_start':2*LAGGED_DAYS+1}
@@ -62,8 +63,8 @@ def mask_nan(frame):
     frame = frame.fillna(0)
     return frame
 
-#Loads and preprocesses data from training_set.csv and crossvalidation_set.csv
-def get_data():
+#Called once by parent thread to read dataframes into shared namespace
+def load_dataframes():
     nrows = None
     include_fields = ['hours','prov_id','day_of_week','avg_employees','perc_hours_today_before',
                       'perc_hours_yesterday_before', 'perc_hours_tomorrow_before']
@@ -82,6 +83,10 @@ def get_data():
     train = mask_nan(train)
     val = mask_nan(val)
     
+    return train,val
+    
+#Loads and preprocesses data from training_set.csv and crossvalidation_set.csv
+def preprocess_data(train,val):
     #Separate predictors and labels
     train_inputs, train_labels = train.drop(['hours'], axis=1), train.filter(['hours'])
     val_inputs, val_labels = val.drop(['hours'], axis=1), val.filter(['hours'])
@@ -154,13 +159,6 @@ class RNN(tf.keras.Model):
             x = layer(x)
         
         return self.out(x)
-    
-    #def format_time_series(inputs):
-        #series = tf.reverse(inputs[:,index_dict['recurrence_start']:index_dict['recurrence_start']+self.recurrence_length],[1])
-        #mask = tf.reverse(inputs[:,index_dict['mask_start']:index_dict['mask_start']+self.recurrence_length],[1])
-        #series = tf.expand_dims(series,2)
-        #mask = tf.expand_dims(mask,2)
-        #return tf.concat([series,mask],2)
 
 class RNN_Conditioned(tf.keras.Model):
     #define all components of model
@@ -221,9 +219,15 @@ base_dict = {'Recurrence length':-1,'LSTM Units':-1,'Embedding Dimension':-1,'FF
              'perc_hours_yesterday_before', 'perc_hours_tomorrow_before'],'LSTM type':"Unconditioned",'user':"asharma"}
 
 # Worker function for multiprocessing Process. Trains an RNN with the specified recurrence length
-def train_and_test_models(recurrence_length,lstm_units,dense_shape,embed_dim,lstm_type):
-    #print(f"Started process with recurrence length: {recurrence_length}")
-    trainSet,valSet,vocab = get_data()
+def train_and_test_models(ns,recurrence_length,lstm_units,dense_shape,embed_dim,lstm_type):
+    #restrict each process to 10 cores
+    tf.config.threading.set_intra_op_parallelism_threads(10)
+    tf.config.threading.set_inter_op_parallelism_threads(10)
+
+    
+    #trainSet,valSet,vocab = get_data()
+    trainSet,valSet,vocab = preprocess_data(ns.train,ns.val)
+    
     start_time = time.time()
     start_date = datetime.datetime.now()
     with tf.device('/cpu:0'):
@@ -264,7 +268,7 @@ def list_helper(x,mult):
     return outList
 
 #Returns permutation corresponding to startCoords + its 4 greater neighbors
-def gen_perm(startCoords,units,shape_ratios,embeddings,multiplier):
+def gen_perm(ns,startCoords,units,shape_ratios,embeddings,multiplier):
     out = []
     coord_list = []
     fields_list = [units,shape_ratios,embeddings,multiplier]
@@ -277,9 +281,9 @@ def gen_perm(startCoords,units,shape_ratios,embeddings,multiplier):
         if embeddings[currCoords[2]] >= units[currCoords[0]]:
             continue
         shapes = [list_helper(x,multiplier[currCoords[3]]) for x in shape_ratios]
-        out.append((LAGGED_DAYS,units[currCoords[0]],shapes[currCoords[1]],
+        out.append((ns,LAGGED_DAYS,units[currCoords[0]],shapes[currCoords[1]],
                     embeddings[currCoords[2]],"Unconditioned"))
-        out.append((LAGGED_DAYS,units[currCoords[0]],shapes[currCoords[1]],
+        out.append((ns,LAGGED_DAYS,units[currCoords[0]],shapes[currCoords[1]],
                     embeddings[currCoords[2]],"Conditioned"))
         coord_list.append(currCoords)
         coord_list.append(currCoords)
@@ -287,23 +291,13 @@ def gen_perm(startCoords,units,shape_ratios,embeddings,multiplier):
     
     return out,coord_list
 
-def autotune():
-    shape_ratios = [[1],[1,1],[2,1],[3,1],[4,1],[1,1,1],[2,1,1],[2,2,1],[3,2,1],[4,2,1],[4,4,1],[1,1,1,1],
-                    [2,1,1,1],[4,2,1,1],[8,4,2,1],[8,4,4,1],[8,8,4,1],[8,8,8,1],[16,8,4,1],[16,16,8,1]]
-    embed_sizes = [0,5,10,20,50,100]
-    lstm_units = [8,16,32,64,128]
-    mult = [2,3,4,5,6,7,8]
-    
-    #shape_ratios = [[1],[1,1],[2,1],[16,8,4,1],[16,16,8,1]]
-    #embed_sizes = [0,10]
-    #lstm_units = [8,16,32]
-    #mult = [2,3,4]
+def autotune(ns,shape_ratios,embed_sizes,lstm_units,mult):
     best_loss = 1000               
     improving = True              
     startCoords = [1,0,0,0]
     while(improving):
         improving = False        
-        work_list, coords_list = gen_perm(startCoords,lstm_units,shape_ratios,embed_sizes,mult)
+        work_list, coords_list = gen_perm(ns,startCoords,lstm_units,shape_ratios,embed_sizes,mult)
         print(coords_list)
         with mp.Pool(processes=5) as pool:           
             results = pool.starmap(train_and_test_models,work_list)
@@ -318,5 +312,14 @@ def autotune():
     return best_loss
             
 if __name__ == '__main__':
-    optimum = autotune()
+    mgr = Manager()
+    ns = mgr.Namespace()
+    ns.train, ns.val = load_dataframes()
+    
+    shape_ratios = [[1],[1,1],[1,1,1],[1,1,1,1],[4,1],[8,1],[8,4,1],[16,8,1],[16,8,4,1],[4,2,1,1]]
+    embed_sizes = [0,5,10,20,50,100]
+    lstm_units = [8,16,32,64,128]
+    mult = [2,4,6,8]
+    
+    optimum = autotune(ns,shape_ratios,embed_sizes,lstm_units,mult)
     print(f"Best Validation Loss: {optimum}")
