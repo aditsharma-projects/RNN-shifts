@@ -257,21 +257,6 @@ def train_and_test_models(recurrence_length,lstm_units,dense_shape,embed_dim,lst
     log_model_info(param_dict,LOG_PATH)
     #print("COMPLETED WORK")
     return valLoss
-
-#train_and_test_models(14,16,[8,4,1],0)    
-    
-#shapes = [[16,8,1],[1],[8,1]]
-#units = [32]
-#tasks = []
-#for shape in shapes:
-#    for size in units:  
-#        tasks.append(Process(target=train_and_test_models,args=(30,size,shape,0,"Unconditioned")))
-        #tasks.append(Process(target=train_and_test_models,args=(14,size,shape,0)))
-
-#for task in tasks:
-#    task.start()
-#for task in tasks:
-#    task.join()
     
 def list_helper(x,mult):
     outList = [y*mult for y in x]
@@ -283,24 +268,22 @@ def gen_perm(startCoords,units,shape_ratios,embeddings,multiplier):
     out = []
     coord_list = []
     fields_list = [units,shape_ratios,embeddings,multiplier]
-    for i in range(-1,4):    
+    for i in range(-1,4):
+        currCoords = startCoords.copy()
         if i!=-1:
-            startCoords[i] += 1  
-        if startCoords[i] >= len(fields_list[i]):
-            startCoords[i] -= 1
+            currCoords[i] += 1  
+        if currCoords[i] >= len(fields_list[i]):
             continue
-        if embeddings[startCoords[2]] >= units[startCoords[0]]:
-            startCoords[i] -= 1
+        if embeddings[currCoords[2]] >= units[currCoords[0]]:
             continue
-        shapes = [list_helper(x,multiplier[startCoords[3]]) for x in shape_ratios]
-        out.append((LAGGED_DAYS,units[startCoords[0]],shapes[startCoords[1]],
-                    embeddings[startCoords[2]],"Unconditioned"))
-        out.append((LAGGED_DAYS,units[startCoords[0]],shapes[startCoords[1]],
-                    embeddings[startCoords[2]],"Conditioned"))
-        coord_list.append(startCoords)
-        coord_list.append(startCoords)
-        if i!=-1:
-            startCoords[i] -= 1
+        shapes = [list_helper(x,multiplier[currCoords[3]]) for x in shape_ratios]
+        out.append((LAGGED_DAYS,units[currCoords[0]],shapes[currCoords[1]],
+                    embeddings[currCoords[2]],"Unconditioned"))
+        out.append((LAGGED_DAYS,units[currCoords[0]],shapes[currCoords[1]],
+                    embeddings[currCoords[2]],"Conditioned"))
+        coord_list.append(currCoords)
+        coord_list.append(currCoords)
+        
     
     return out,coord_list
 
@@ -315,13 +298,13 @@ def autotune():
     #embed_sizes = [0,10]
     #lstm_units = [8,16,32]
     #mult = [2,3,4]
-    ######
     best_loss = 1000               
     improving = True              
-    startCoords = [0,0,0,0]
+    startCoords = [1,0,0,0]
     while(improving):
-        improving = False           
+        improving = False        
         work_list, coords_list = gen_perm(startCoords,lstm_units,shape_ratios,embed_sizes,mult)
+        print(coords_list)
         with mp.Pool(processes=5) as pool:           
             results = pool.starmap(train_and_test_models,work_list)
             best_loss = results[0]
@@ -332,8 +315,6 @@ def autotune():
                     startCoords = coords_list[i]
                     improving = True
                 
-    ######
-    
     return best_loss
             
 if __name__ == '__main__':
