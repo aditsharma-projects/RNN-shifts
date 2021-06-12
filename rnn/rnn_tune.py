@@ -12,6 +12,8 @@ from multiprocessing import Manager
 LAGGED_DAYS = 30
 index_dict = {'prov_id':0,'recurrence_start':1,'mask_start':LAGGED_DAYS+1,'descriptors_start':2*LAGGED_DAYS+1}
 LOG_PATH = '/users/facsupport/asharma/RNN-shifts/output/rnn_autotuning_history.csv'
+TRAIN_PATH = "/export/storage_adgandhi/PBJhours_ML/Data/Intermediate/train_test_validation/training_set_30.csv"
+VAL_PATH = "/export/storage_adgandhi/PBJhours_ML/Data/Intermediate/train_test_validation/crossvalidation_set_30.csv"
 
 # Make print flush by default
 def print(*objects, sep=' ', end='\n', file=sys.stdout, flush=True):
@@ -72,8 +74,8 @@ def load_dataframes():
         ##Inserts recurrence block starting at index 2
         include_fields.insert(i+1,f"hours_l{i}")
     
-    train = pd.read_csv("/export/storage_adgandhi/PBJhours_ML/Data/Intermediate/train_test_validation/training_set_30.csv",nrows=nrows,usecols=include_fields)
-    val = pd.read_csv("/export/storage_adgandhi/PBJhours_ML/Data/Intermediate/train_test_validation/crossvalidation_set_30.csv",nrows=nrows,usecols=include_fields)
+    train = pd.read_csv(TRAIN_PATH,nrows=nrows,usecols=include_fields)
+    val = pd.read_csv(VAL_PATH,nrows=nrows,usecols=include_fields)
     
     #Reorder columns to the order specified in include_fields [hours,prov_id,recurrence block,other block]
     train = train.reindex(columns=include_fields)
