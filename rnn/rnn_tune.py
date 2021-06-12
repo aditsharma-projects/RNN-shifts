@@ -11,7 +11,7 @@ from multiprocessing import Manager
 
 LAGGED_DAYS = 30
 index_dict = {'prov_id':0,'recurrence_start':1,'mask_start':LAGGED_DAYS+1,'descriptors_start':2*LAGGED_DAYS+1}
-LOG_PATH = '/users/facsupport/asharma/RNN-shifts/rnn_autotuning_history.csv'
+LOG_PATH = '/users/facsupport/asharma/RNN-shifts/output/rnn_autotuning_history.csv'
 
 # Make print flush by default
 def print(*objects, sep=' ', end='\n', file=sys.stdout, flush=True):
@@ -82,6 +82,23 @@ def load_dataframes():
     #Mask nan values
     train = mask_nan(train)
     val = mask_nan(val)
+      
+    #Remove providers that appear in val set but not train
+    train_providers = train['prov_id'].unique()
+    val_providers = val['prov_id'].unique()
+    for value in val_providers:
+        if value not in train_providers:
+            mask = (val['prov_id']!=value)
+            val = val[mask]
+
+    # Remap prov_id's between 0 - # providers
+    provider_map = {}
+    index = 0
+    for element in train['prov_id'].unique():
+        provider_map[element]=index
+        index +=1
+    train['prov_id'] = train['prov_id'].map(provider_map)
+    val['prov_id'] = val['prov_id'].map(provider_map)
     
     return train,val
     
@@ -93,24 +110,6 @@ def preprocess_data(train,val):
 
     vocab_size = len(train_inputs['prov_id'].unique())
 
-    #Remove providers that appear in val set but not train
-    train_providers = train_inputs['prov_id'].unique()
-    val_providers = val_inputs['prov_id'].unique()
-    for value in val_providers:
-        if value not in train_providers:
-            mask = (val_inputs['prov_id']!=value)
-            val_inputs = val_inputs[mask]
-            val_labels = val_labels[mask]
-
-    # Remap prov_id's between 0 - # providers
-    provider_map = {}
-    index = 0
-    for element in train_inputs['prov_id'].unique():
-        provider_map[element]=index
-        index +=1
-    train_inputs['prov_id'] = train_inputs['prov_id'].map(provider_map)
-    val_inputs['prov_id'] = val_inputs['prov_id'].map(provider_map)
-    
     #expand categoricals to one-hot encodings
     train_inputs = expand_one_hot(['day_of_week'],train_inputs)
     val_inputs = expand_one_hot(['day_of_week'],val_inputs) 
@@ -225,14 +224,13 @@ def hash_coordinates(coords):
 # Worker function for multiprocessing Process. Trains an RNN with the specified recurrence length
 def train_and_test_models(ns,recurrence_length,lstm_units,dense_shape,embed_dim,lstm_type,coordinates):
     #Check if we've already tested this run
-    log_file = pd.read_csv(LOG_PATH)
-    log_file['coordinates'] = log_file['coordinates'].apply(hash_coordinates)
-    if hash_coordinates(str(coordinates)) in log_file['coordinates']: 
-        return 10000
-    
-    #restrict each process to 10 cores
-    tf.config.threading.set_intra_op_parallelism_threads(10)
-    tf.config.threading.set_inter_op_parallelism_threads(10)
+    try:
+        log_file = pd.read_csv(LOG_PATH)
+        log_file['coordinates'] = log_file['coordinates'].apply(hash_coordinates)
+        if hash_coordinates(str(coordinates)) in log_file['coordinates']: 
+            return 10000  #TODO: Return actual loss value of run
+    except FileNotFoundError:
+         garbage = 0
     
     #trainSet,valSet,vocab = get_data()
     trainSet,valSet,vocab = preprocess_data(ns.train,ns.val)
@@ -271,7 +269,8 @@ def train_and_test_models(ns,recurrence_length,lstm_units,dense_shape,embed_dim,
     log_model_info(param_dict,LOG_PATH)
     #print("COMPLETED WORK")
     return valLoss
-    
+
+#takes in list x and multiplies all elements of x by mult
 def list_helper(x,mult):
     outList = [y*mult for y in x]
     outList = outList + [1]
@@ -282,25 +281,30 @@ def gen_perm(ns,startCoords,units,shape_ratios,embeddings,multiplier):
     out = []
     coord_list = []
     fields_list = [units,shape_ratios,embeddings,multiplier]
-    for i in range(-1,4):
+    for i in range(-1,7):
         currCoords = startCoords.copy()
-        if i!=-1:
+        if i >= 4:  #This case implements a way to search over multiple shape ratios
+            currCoords[1] += (i-3) # in one search iteration
+            i=1
+        if i < 4:
             currCoords[i] += 1  
         if currCoords[i] >= len(fields_list[i]):
             continue
         if embeddings[currCoords[2]] >= units[currCoords[0]]:
             continue
-        shapes = [list_helper(x,multiplier[currCoords[3]]) for x in shape_ratios]
+        shapes = [list_helper(x,multiplier[currCoords[3]]) for x in shape_ratios] #Apply list_helper to each list in shape_ratios
         out.append((ns,LAGGED_DAYS,units[currCoords[0]],shapes[currCoords[1]],
                     embeddings[currCoords[2]],"Unconditioned",currCoords))
         out.append((ns,LAGGED_DAYS,units[currCoords[0]],shapes[currCoords[1]],
                     embeddings[currCoords[2]],"Conditioned",currCoords))
         coord_list.append(currCoords)
         coord_list.append(currCoords)
-        
-    
+            
     return out,coord_list
 
+#Implements a greedy search: Compute delta_val_loss for startCoords and its 4 upper adjacent neighbors
+#If atleast one of the neighbors gives an improvement, choose the neighbor with the best improvement
+#and repeat witht the neighbor as the new staertCoords
 def autotune(ns,shape_ratios,embed_sizes,lstm_units,mult):
     best_loss = 1000               
     improving = True              
@@ -308,8 +312,7 @@ def autotune(ns,shape_ratios,embed_sizes,lstm_units,mult):
     while(improving):
         improving = False        
         work_list, coords_list = gen_perm(ns,startCoords,lstm_units,shape_ratios,embed_sizes,mult)
-        print(coords_list)
-        with mp.Pool(processes=5) as pool:           
+        with mp.Pool(processes=8) as pool:           
             results = pool.starmap(train_and_test_models,work_list)
             if results[0] < best_loss:
                 best_loss = results[0]
@@ -323,11 +326,18 @@ def autotune(ns,shape_ratios,embed_sizes,lstm_units,mult):
     return best_loss
             
 if __name__ == '__main__':
+    
+    #restrict all processes to 100 cores
+    tf.config.threading.set_intra_op_parallelism_threads(100)
+    tf.config.threading.set_inter_op_parallelism_threads(100)
+    
+    #Share train and val dataframes across processes 
     mgr = Manager()
     ns = mgr.Namespace()
     ns.train, ns.val = load_dataframes()
     
-    shape_ratios = [[1],[1,1],[1,1,1],[1,1,1,1],[4,1],[8,1],[8,4,1],[16,8,1],[16,8,4,1],[4,2,1,1]]
+    #Comprehensive list of reasonable hyperparameter values
+    shape_ratios = [[1],[1,1],[1,1,1],[1,1,1,1],[4,1],[8,4,1],[16,8,4,1],[8,1],[16,8,1],[4,2,1,1]]
     embed_sizes = [0,5,10,20,50,100]
     lstm_units = [8,16,32,64,128]
     mult = [2,4,6,8]
