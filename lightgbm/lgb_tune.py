@@ -167,7 +167,7 @@ if ROWS is not None:
 
 if not os.path.isdir(FIGURES_FOLDER):
     try:
-        os.mkdirs(FIGURES_FOLDER)
+        os.makedirs(FIGURES_FOLDER)
     except Exception as e:
         print("WARNING: Could not create FIGURES_FOLDER directory. Feature importance plots will not be saved.\n")
         print(e)
