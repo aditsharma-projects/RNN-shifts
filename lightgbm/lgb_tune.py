@@ -25,12 +25,12 @@ HISTORY_FILE = "/users/facsupport/rtjoa/lgb_model_30.csv"
 FIGURES_FOLDER = "figures_30"
 
 # Value to fill NA values with
-FILL_NA = -1
+FILL_NA = None
 
 # Ensure we don't save truncated output to same place
 if ROWS is not None:
     HISTORY_FILE += ".temp.csv"
-    FIGURES_FOLDER += "_junk"
+    FIGURES_FOLDER += "_temp"
 
 # Columns to pull from data files and their corresponding types
 COLUMNS = {
@@ -166,7 +166,11 @@ if ROWS is not None:
     print(f"WARNING: Truncating to {ROWS} rows. Set ROWS=None for meaningful results.\n")
 
 if not os.path.isdir(FIGURES_FOLDER):
-    print(f"WARNING: FIGURES_FOLDER is not a valid directory. Feature importance plots will not be saved.\n")
+    try:
+        os.mkdirs(FIGURES_FOLDER)
+    except Exception as e:
+        print("WARNING: Could not create FIGURES_FOLDER directory. Feature importance plots will not be saved.\n")
+        print(e)
 
 print_kv("TRAIN_FILE", TRAIN_FILE)
 print_kv("VAL_FILE", VAL_FILE)
@@ -192,15 +196,13 @@ else:
     test = pd.read_csv(TEST_FILE, parse_dates=["date"])
 timer_load.done()
 
-
-timer_dropna = Timer("Dropping N/A values...")
+timer_cast = Timer("Casting values...")
 for df in [train, val, test]:
-    for col, t in COLUMNS.items(): # Cast rows to appropriate type
+    for col, t in COLUMNS.items(): # Cast columns to appropriate type
         if FILL_NA is not None:
             df[col].fillna(FILL_NA)
         df[col] = df[col].astype(t)
-
-timer_dropna.done()
+timer_cast.done()
 
 timer_split = Timer("Splitting into inputs and labels...")
 train_inputs, train_labels = train.drop(['hours'], axis=1).filter(COLUMNS.keys()), train.filter(['hours'])
