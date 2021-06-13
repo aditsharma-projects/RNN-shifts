@@ -2,46 +2,124 @@ import pandas as pd
 import time
 import datetime
 import tensorflow as tf
-from multiprocessing import Process
 import numpy as np
 import sys
 import multiprocessing as mp
-from multiprocessing import Pool
-from multiprocessing import Manager
+import getpass
 
+# %%
+#### CONFIGURATION - DATA & FILES ####
+
+# Number of rows to truncate to. Unless debugging, should always be set to None
+# so full data files are used.
+ROWS = None
+
+# File inputs/outputs
+LOG_PATH = '/users/facsupport/rtjoa/junk.csv'#'/users/facsupport/asharma/RNN-shifts/output/rnn_autotuning_history.csv'
+TRAIN_PATH = '/export/storage_adgandhi/PBJhours_ML/Data/Intermediate/train_test_validation/training_set_30.csv'
+VAL_PATH = '/export/storage_adgandhi/PBJhours_ML/Data/Intermediate/train_test_validation/crossvalidation_set_30.csv'
+
+# Ensure we don't save truncated output to same place
+if ROWS is not None:
+    LOG_PATH = 'temp_' + LOG_PATH
+
+# %%
+#### CONFIGURATION - MODEL STRUCTURES ####
+
+# Hyperparameter choices
+SHAPES = [[1],[1,1],[1,1,1],[1,1,1,1],[4,1],[8,4,1],[16,8,4,1],[8,1],[16,8,1],[4,2,1,1]]
+SHAPE_SCALES = [2,4,6,8]
+EMBED_SIZES = [0,5,10,20,50,100]
+LSTM_UNITS = [8,16,32,64,128]
+
+# Number of days of lagged shifts to feed directly to RNN
 LAGGED_DAYS = 30
-index_dict = {'prov_id':0,'recurrence_start':1,'mask_start':LAGGED_DAYS+1,'descriptors_start':2*LAGGED_DAYS+1}
-LOG_PATH = '/users/facsupport/asharma/RNN-shifts/output/rnn_autotuning_history.csv'
-TRAIN_PATH = "/export/storage_adgandhi/PBJhours_ML/Data/Intermediate/train_test_validation/training_set_30.csv"
-VAL_PATH = "/export/storage_adgandhi/PBJhours_ML/Data/Intermediate/train_test_validation/crossvalidation_set_30.csv"
 
-# Make print flush by default
+# Continuous predictors
+DESCRIPTOR_COLUMNS = ['avg_employees', 'perc_hours_today_before',
+     'perc_hours_yesterday_before', 'perc_hours_tomorrow_before']
+RECURRENCE_COLUMNS = [f"hours_l{i}" for i in range(1, LAGGED_DAYS+1)]
+
+# Categorical predictors
+ONE_HOT_ENCODED_COLUMNS = ['day_of_week']
+EMBEDDED_COLUMN = 'prov_id'
+
+# Column to predict
+PREDICTED_COLUMN = 'hours'
+
+# %%
+#### CONFIGURATION - TRAINING SETTINGS ####
+
+# Number of epochs to train an individual model
+EPOCHS = 5
+
+# After three epochs, train 0.1 * this rate; after seven, 0.01 * this rate
+INITIAL_LEARNING_RATE = 1e-3
+
+# Number of rounds without improvement after which to stop. Each "round"
+# consists of a pool of multiple models.
+EARLY_STOPPING_ROUNDS = 1
+
+BUFFER_SIZE = 10000
+BATCH_SIZE = 128
+# %%
+#### CONFIGURATION VALIDATION ####
+
+if len(RECURRENCE_COLUMNS) != LAGGED_DAYS:
+    raise ValueError(f"Number of recurrence columns ({len(RECURRENCE_COLUMNS)}) must equal LAGGED_DAYS ({LAGGED_DAYS}).")
+
+# %%
+####
+
+# Base dict of values to log for each run.
+base_model_info = {
+    'Initial Learning Rate': INITIAL_LEARNING_RATE,
+    'Regularization': 'Batch Normalization',
+    'Metric': 'mse',
+    'Epochs': EPOCHS,
+    'Columns': DESCRIPTOR_COLUMNS,
+    'user': getpass.getuser(),
+}
+
+# Key indices of input columns
+# The embedded column (default: prov_id) takes up index 0
+# The recurrence columns (default: hours_l1, hoursl2, etc.) take up indices 1 through LAGGED_DAYS
+# The recurrence mask columns take up indices LAGGED_DAYS + 1 through LAGGED_DAYS * 2
+# The descriptor columns and one-hot encoded columns follow
+embedded_idx = 0
+recurrence_start_idx = 1
+mask_start_idx = LAGGED_DAYS + 1
+descriptors_start_idx = 2 * LAGGED_DAYS + 1
+
+# Override print to flush by default
 def print(*objects, sep=' ', end='\n', file=sys.stdout, flush=True):
     __builtins__.print(*objects, sep=sep, end=end, file=file, flush=flush)
 
-#Logs hyperparameter specifications and other attributes of each run into a csv file
+# Logs hyperparameter specifications and other attributes of each run into a csv file
 def log_model_info(model_info, path):
     try:
+        print(path)
         df = pd.read_csv(path)
+        print('done')
     except FileNotFoundError:
         #print(f"History csv not found at {path}. Creating new file.")
         df = pd.DataFrame()
-
+    
     new_df = pd.DataFrame({k: [v] for k, v in model_info.items()})
     df = pd.concat([df, new_df], axis=0)
     df = df.sort_values(by='Val loss')
     df.to_csv(path, index=False)
           
     
-#Expand categorical variables enumerated in labels to one-hot encodings
-#Takes in pandas dataframe and returns tf tensor 
-#Column ordering is preservered, with the convereted categorical columns dropped from the frame
-#and their one-hot encodings concatenated to the end of the converted tensor
+# Expand categorical variables enumerated in labels to one-hot encodings
+# Takes in pandas dataframe and returns tf tensor 
+# Column ordering is preservered, with the convereted categorical columns dropped from the frame
+# and their one-hot encodings concatenated to the end of the converted tensor
 def expand_one_hot(labels,dataset):
     outList = []
     for label in labels:  
         col = dataset[label]
-        ###Generate a dict for all unique values (Don't waste space encoding non important job id's)
+        # Generate a dict for all unique values (Don't waste space encoding non important job id's)
         map = {}
         index = 0
         for element in col.unique():
@@ -56,68 +134,63 @@ def expand_one_hot(labels,dataset):
     output = tf.concat(outList,1)
     return output
 
-#Inserts a mask equal to LAGGED_DAYS to distinguish nan values from 0
-def mask_nan(frame):
-    mask = frame.isna()
-    #Input frame is arranged as follows: 'hours','prov_id',recurrance block,other block
-    for i in range(1,LAGGED_DAYS+1):
-        frame.insert(1+LAGGED_DAYS+i,f"mask_{i}",mask[f"hours_l{i}"].astype(int).astype('float32'))
-    frame = frame.fillna(0)
-    return frame
+# Inserts a mask equal to LAGGED_DAYS to distinguish nan values from 0
+def mask_nan(df):
+    # Input frame is arranged as follows: prov_id, recurrence cols, other cols
+    for i in range(LAGGED_DAYS):
+        df.insert(
+            mask_start_idx + i, # Insert index
+            f"mask_{i+1}", # Column name
+            df[f"hours_l{i+1}"].isna().astype(int).astype('float32') # Column series
+        )
+    df = df.fillna(0, inplace=True)
 
-#Called once by parent thread to read dataframes into shared namespace
+# Called once by parent thread to read dataframes into shared namespace
 def load_dataframes():
-    nrows = None
-    include_fields = ['hours','prov_id','day_of_week','avg_employees','perc_hours_today_before',
-                      'perc_hours_yesterday_before', 'perc_hours_tomorrow_before']
-    for i in range(1,LAGGED_DAYS+1):
-        ##Inserts recurrence block starting at index 2
-        include_fields.insert(i+1,f"hours_l{i}")
+    cols = [EMBEDDED_COLUMN] + RECURRENCE_COLUMNS + DESCRIPTOR_COLUMNS + ONE_HOT_ENCODED_COLUMNS + [PREDICTED_COLUMN]
+
+    train = pd.read_csv(TRAIN_PATH,nrows=ROWS,usecols=cols)
+    val = pd.read_csv(VAL_PATH,nrows=ROWS,usecols=cols)
     
-    train = pd.read_csv(TRAIN_PATH,nrows=nrows,usecols=include_fields)
-    val = pd.read_csv(VAL_PATH,nrows=nrows,usecols=include_fields)
+    # Reorder columns to prov_id, recurrence block, other block, hours
+    train = train.reindex(columns=cols)
+    val = val.reindex(columns=cols)
     
-    #Reorder columns to the order specified in include_fields [hours,prov_id,recurrence block,other block]
-    train = train.reindex(columns=include_fields)
-    val = val.reindex(columns=include_fields)
-    
-    #Mask nan values
-    train = mask_nan(train)
-    val = mask_nan(val)
+    # Mask nan values, inserting LAGGED_DAYS columns between the recurrence columns and descriptor columns
+    mask_nan(train)
+    mask_nan(val)
       
-    #Remove providers that appear in val set but not train
-    train_providers = train['prov_id'].unique()
-    val_providers = val['prov_id'].unique()
-    for value in val_providers:
-        if value not in train_providers:
-            mask = (val['prov_id']!=value)
+    # Remove providers that appear in val set but not train
+    train_providers = train[EMBEDDED_COLUMN].unique()
+    val_providers = val[EMBEDDED_COLUMN].unique()
+    for provider in val_providers:
+        if provider not in train_providers:
+            mask = (val[EMBEDDED_COLUMN]!=provider)
             val = val[mask]
 
     # Remap prov_id's between 0 - # providers
     provider_map = {}
     index = 0
-    for element in train['prov_id'].unique():
+    for element in train[EMBEDDED_COLUMN].unique():
         provider_map[element]=index
         index +=1
-    train['prov_id'] = train['prov_id'].map(provider_map)
-    val['prov_id'] = val['prov_id'].map(provider_map)
+    train[EMBEDDED_COLUMN] = train[EMBEDDED_COLUMN].map(provider_map)
+    val[EMBEDDED_COLUMN] = val[EMBEDDED_COLUMN].map(provider_map)
     
     return train,val
     
 #Loads and preprocesses data from training_set.csv and crossvalidation_set.csv
 def preprocess_data(train,val):
     #Separate predictors and labels
-    train_inputs, train_labels = train.drop(['hours'], axis=1), train.filter(['hours'])
-    val_inputs, val_labels = val.drop(['hours'], axis=1), val.filter(['hours'])
+    train_inputs, train_labels = train.drop([PREDICTED_COLUMN], axis=1), train.filter([PREDICTED_COLUMN])
+    val_inputs, val_labels = val.drop([PREDICTED_COLUMN], axis=1), val.filter([PREDICTED_COLUMN])
 
-    vocab_size = len(train_inputs['prov_id'].unique())
+    vocab_size = len(train_inputs[EMBEDDED_COLUMN].unique())
 
     #expand categoricals to one-hot encodings
-    train_inputs = expand_one_hot(['day_of_week'],train_inputs)
-    val_inputs = expand_one_hot(['day_of_week'],val_inputs) 
+    train_inputs = expand_one_hot(ONE_HOT_ENCODED_COLUMNS, train_inputs)
+    val_inputs = expand_one_hot(ONE_HOT_ENCODED_COLUMNS, val_inputs) 
     
-    BUFFER_SIZE = 10000
-    BATCH_SIZE = 128
     trainSet = tf.data.Dataset.from_tensor_slices((train_inputs,train_labels)).shuffle(BUFFER_SIZE).batch(BATCH_SIZE,drop_remainder=True)
     valSet = tf.data.Dataset.from_tensor_slices((val_inputs,val_labels)).shuffle(BUFFER_SIZE).batch(BATCH_SIZE,drop_remainder=True)
     return trainSet,valSet,vocab_size
@@ -144,15 +217,15 @@ class RNN(tf.keras.Model):
     
     #define model architecture
     def call(self, inputs, training=False):
-        series = tf.reverse(inputs[:,index_dict['recurrence_start']:index_dict['recurrence_start']+self.recurrence_length],[1])
-        mask = tf.reverse(inputs[:,index_dict['mask_start']:index_dict['mask_start']+self.recurrence_length],[1])
+        series = tf.reverse(inputs[:,recurrence_start_idx:recurrence_start_idx+self.recurrence_length],[1])
+        mask = tf.reverse(inputs[:,mask_start_idx:mask_start_idx+self.recurrence_length],[1])
         
         time_series = tf.concat([tf.expand_dims(series,2),tf.expand_dims(mask,2)],2)
-        additional_inputs = inputs[:,index_dict['descriptors_start']:]
+        additional_inputs = inputs[:,descriptors_start_idx:]
         
         x = self.lstm(time_series)
         if self.embed_dim != 0:    
-            embedding_vectors = self.embeddings(inputs[:,index_dict['prov_id']])
+            embedding_vectors = self.embeddings(inputs[:,embedded_idx])
             x = tf.concat([x,additional_inputs,embedding_vectors],1)
         else:
             x = tf.concat([x,additional_inputs],1)
@@ -184,14 +257,14 @@ class RNN_Conditioned(tf.keras.Model):
     
     #define model architecture
     def call(self, inputs, training=False):
-        series = tf.reverse(inputs[:,index_dict['recurrence_start']:index_dict['recurrence_start']+self.recurrence_length],[1])
-        mask = tf.reverse(inputs[:,index_dict['mask_start']:index_dict['mask_start']+self.recurrence_length],[1])
+        series = tf.reverse(inputs[:,recurrence_start_idx:recurrence_start_idx+self.recurrence_length],[1])
+        mask = tf.reverse(inputs[:,mask_start_idx:mask_start_idx+self.recurrence_length],[1])
         
         time_series = tf.concat([tf.expand_dims(series,2),tf.expand_dims(mask,2)],2)
-        additional_inputs = inputs[:,index_dict['descriptors_start']:]
+        additional_inputs = inputs[:,descriptors_start_idx:]
         transformed_inputs = self.transform(additional_inputs)
         if self.embed_dim != 0:    
-            embedding_vectors = self.embeddings(inputs[:,index_dict['prov_id']])
+            embedding_vectors = self.embeddings(inputs[:,embedded_idx])
             transformed_inputs = tf.concat([transformed_inputs,embedding_vectors],1)
         c_0 = tf.convert_to_tensor(np.random.random([128, self.units]).astype(np.float32))
        #h_0 = tf.convert_to_tensor(np.random.random([128, self.units]).astype(np.float32))
@@ -202,37 +275,32 @@ class RNN_Conditioned(tf.keras.Model):
             x = layer(x)
         
         return self.out(x)
-    
-learning_rate = 1e-3
-EPOCHS = 5
+
 # Callback function to decrease learning rate
 def decay(epoch):
   if epoch < 3:
-    return learning_rate
+    return INITIAL_LEARNING_RATE
   elif epoch >= 3 and epoch < 7:
-    return learning_rate/10
+    return INITIAL_LEARNING_RATE/10
   else:
-    return learning_rate/100
-
-# base dict of values to log for each run. Some values are common to every run
-base_dict = {'Recurrence length':-1,'LSTM Units':-1,'Embedding Dimension':-1,'FF model shape':[],'Initial Learning Rate':learning_rate,'Regularization':"Batch Normalization",'Metric':"mse",'Training loss':-1,'Val loss':-1,
-             'time_start':-1,'time_duration':-1,'Epochs':EPOCHS,'Columns':['day_of_week','avg_employees','perc_hours_today_before',
-             'perc_hours_yesterday_before', 'perc_hours_tomorrow_before'],'LSTM type':"Unconditioned",'user':"asharma",'coordinates':[]}
+    return INITIAL_LEARNING_RATE/100
 
 # helper function for lines 228 and 229
 def hash_coordinates(coords):
-    return int(coords[1]) + int(coords[4])*10 + int(coords[7])*100 + int(coords[10])*1000
+    coord_strs = coords[1:-1].split(',') # remove leading and trailing square brackets, separate terms
+    coord_ints = map(int, coord_strs) # map to int
+    return hash(tuple(coord_ints))
 
 # Worker function for multiprocessing Process. Trains an RNN with the specified recurrence length
 def train_and_test_models(ns,recurrence_length,lstm_units,dense_shape,embed_dim,lstm_type,coordinates):
     #Check if we've already tested this run
-    try:
-        log_file = pd.read_csv(LOG_PATH)
-        log_file['coordinates'] = log_file['coordinates'].apply(hash_coordinates)
-        if hash_coordinates(str(coordinates)) in log_file['coordinates']: 
-            return 10000  #TODO: Return actual loss value of run
-    except FileNotFoundError:
-         garbage = 0
+    # try:
+    #     log_file = pd.read_csv(LOG_PATH)
+    #     log_file['coordinates'] = log_file['coordinates'].apply(hash_coordinates)
+    #     # if hash_coordinates(str(coordinates)) in log_file['coordinates']: 
+    #     #     return 10000  #TODO: Return actual loss value of run
+    # except (FileNotFoundError, pd.errors.ParserError):
+    #      garbage = 0
     
     #trainSet,valSet,vocab = get_data()
     trainSet,valSet,vocab = preprocess_data(ns.train,ns.val)
@@ -247,16 +315,14 @@ def train_and_test_models(ns,recurrence_length,lstm_units,dense_shape,embed_dim,
         model.compile(loss=tf.keras.losses.MeanSquaredError(),
             optimizer=tf.keras.optimizers.Adam(),
             metrics=[tf.keras.metrics.MeanAbsoluteError()])
-        callbacks = [
-        tf.keras.callbacks.LearningRateScheduler(decay)
-        ]
+        callbacks = [tf.keras.callbacks.LearningRateScheduler(decay)]
         history = model.fit(trainSet, epochs=EPOCHS, callbacks=callbacks,verbose=0)
         valLoss, metric = model.evaluate(valSet)
    
     time_taken = str(datetime.timedelta(seconds=(time.time()-start_time)))
     
     #Store values of run into dict
-    param_dict = base_dict.copy()
+    param_dict = base_model_info.copy()
     train_loss = history.history['loss'][EPOCHS-1]
     param_dict['Recurrence length'] = recurrence_length
     param_dict['LSTM Units'] = lstm_units
@@ -272,14 +338,8 @@ def train_and_test_models(ns,recurrence_length,lstm_units,dense_shape,embed_dim,
     #print("COMPLETED WORK")
     return valLoss
 
-#takes in list x and multiplies all elements of x by mult
-def list_helper(x,mult):
-    outList = [y*mult for y in x]
-    outList = outList + [1]
-    return outList
-
 #Returns permutation corresponding to startCoords + its 4 greater neighbors
-def gen_perm(ns,startCoords,units,shape_ratios,embeddings,multiplier):
+def gen_perm(ns,startCoords,units,shape_ratios,embeddings,multiplier,lagged_days):
     out = []
     coord_list = []
     fields_list = [units,shape_ratios,embeddings,multiplier]
@@ -294,55 +354,55 @@ def gen_perm(ns,startCoords,units,shape_ratios,embeddings,multiplier):
             continue
         if embeddings[currCoords[2]] >= units[currCoords[0]]:
             continue
-        shapes = [list_helper(x,multiplier[currCoords[3]]) for x in shape_ratios] #Apply list_helper to each list in shape_ratios
-        out.append((ns,LAGGED_DAYS,units[currCoords[0]],shapes[currCoords[1]],
+
+        shapes = []
+        for shape_ratio in shape_ratios:
+            shapes.append([factor * multiplier[currCoords[3]] for factor in shape_ratio] + [1])
+
+        out.append((ns,lagged_days,units[currCoords[0]],shapes[currCoords[1]],
                     embeddings[currCoords[2]],"Unconditioned",currCoords))
-        out.append((ns,LAGGED_DAYS,units[currCoords[0]],shapes[currCoords[1]],
+        out.append((ns,lagged_days,units[currCoords[0]],shapes[currCoords[1]],
                     embeddings[currCoords[2]],"Conditioned",currCoords))
         coord_list.append(currCoords)
         coord_list.append(currCoords)
             
     return out,coord_list
 
-#Implements a greedy search: Compute delta_val_loss for startCoords and its 4 upper adjacent neighbors
-#If atleast one of the neighbors gives an improvement, choose the neighbor with the best improvement
-#and repeat witht the neighbor as the new staertCoords
-def autotune(ns,shape_ratios,embed_sizes,lstm_units,mult):
-    best_loss = 1000               
-    improving = True              
-    startCoords = [1,0,0,0]
-    while(improving):
-        improving = False        
-        work_list, coords_list = gen_perm(ns,startCoords,lstm_units,shape_ratios,embed_sizes,mult)
+# Implements a greedy search: Compute delta_val_loss for startCoords and its 4 upper adjacent neighbors
+# If at least one of the neighbors gives an improvement, choose the neighbor with the best improvement
+# and repeat witht the neighbor as the new staertCoords
+def autotune(ns,shape_ratios,embed_sizes,lstm_units,mult,lagged_days,early_stopping_rounds):
+    best_loss = float('inf')
+    rounds_without_improvement = 0
+    start_coords = [1,0,0,0]
+    while rounds_without_improvement < early_stopping_rounds:
+        work_list, coords_list = gen_perm(ns,start_coords,lstm_units,shape_ratios,embed_sizes,mult,lagged_days)
         with mp.Pool(processes=8) as pool:           
             results = pool.starmap(train_and_test_models,work_list)
-            if results[0] < best_loss:
-                best_loss = results[0]
-            for i in range(len(results)):
-                delta_loss = results[i] - best_loss
-                if delta_loss < 0:
-                    best_loss = results[i]
-                    startCoords = coords_list[i]
-                    improving = True
+
+            # Process losses of results
+            improved = False
+            for loss, coords in zip(results, coords_list):
+                if loss < best_loss:
+                    best_loss = loss
+                    start_coords = coords
+                    improved = True
+            if improved:
+                rounds_without_improvement = 0
+            else:
+                rounds_without_improvement += 1
                 
     return best_loss
             
 if __name__ == '__main__':
-    
-    #restrict all processes to 100 cores
+    # Restrict all processes to 100 cores
     tf.config.threading.set_intra_op_parallelism_threads(100)
     tf.config.threading.set_inter_op_parallelism_threads(100)
     
-    #Share train and val dataframes across processes 
-    mgr = Manager()
+    # Share train and val dataframes across processes 
+    mgr = mp.Manager()
     ns = mgr.Namespace()
     ns.train, ns.val = load_dataframes()
-    
-    #Comprehensive list of reasonable hyperparameter values
-    shape_ratios = [[1],[1,1],[1,1,1],[1,1,1,1],[4,1],[8,4,1],[16,8,4,1],[8,1],[16,8,1],[4,2,1,1]]
-    embed_sizes = [0,5,10,20,50,100]
-    lstm_units = [8,16,32,64,128]
-    mult = [2,4,6,8]
-    
-    optimum = autotune(ns,shape_ratios,embed_sizes,lstm_units,mult)
+       
+    optimum = autotune(ns,SHAPES,EMBED_SIZES,LSTM_UNITS,SHAPE_SCALES,LAGGED_DAYS,EARLY_STOPPING_ROUNDS)
     print(f"Best Validation Loss: {optimum}")
