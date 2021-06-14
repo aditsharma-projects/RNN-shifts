@@ -63,8 +63,8 @@ def mask_nan(frame):
     frame = frame.fillna(0)
     return frame
 
-#Called once by parent thread to read dataframes into shared namespace
-def load_dataframes():
+#Loads and preprocesses data from training_set.csv and crossvalidation_set.csv
+def get_data():
     nrows = None
     include_fields = ['hours','prov_id','day_of_week','avg_employees','perc_hours_today_before',
                       'perc_hours_yesterday_before', 'perc_hours_tomorrow_before']
@@ -99,11 +99,7 @@ def load_dataframes():
         index +=1
     train['prov_id'] = train['prov_id'].map(provider_map)
     val['prov_id'] = val['prov_id'].map(provider_map)
-    
-    return train,val
-    
-#Loads and preprocesses data from training_set.csv and crossvalidation_set.csv
-def preprocess_data(train,val):
+
     #Separate predictors and labels
     train_inputs, train_labels = train.drop(['hours'], axis=1), train.filter(['hours'])
     val_inputs, val_labels = val.drop(['hours'], axis=1), val.filter(['hours'])
@@ -119,6 +115,7 @@ def preprocess_data(train,val):
     trainSet = tf.data.Dataset.from_tensor_slices((train_inputs,train_labels)).shuffle(BUFFER_SIZE).batch(BATCH_SIZE,drop_remainder=True)
     valSet = tf.data.Dataset.from_tensor_slices((val_inputs,val_labels)).shuffle(BUFFER_SIZE).batch(BATCH_SIZE,drop_remainder=True)
     return trainSet,valSet,vocab_size
+    
 
 #RNN class, defines attributes of a model
 class RNN(tf.keras.Model):
@@ -222,7 +219,7 @@ def hash_coordinates(coords):
     return int(coords[1]) + int(coords[4])*10 + int(coords[7])*100 + int(coords[10])*1000
 
 # Worker function for multiprocessing Process. Trains an RNN with the specified recurrence length
-def train_and_test_models(ns,recurrence_length,lstm_units,dense_shape,embed_dim,lstm_type,coordinates):
+def train_and_test_models(time_offset,recurrence_length,lstm_units,dense_shape,embed_dim,lstm_type,coordinates):
     #Check if we've already tested this run
     try:
         log_file = pd.read_csv(LOG_PATH)
@@ -231,11 +228,11 @@ def train_and_test_models(ns,recurrence_length,lstm_units,dense_shape,embed_dim,
             return 10000  #TODO: Return actual loss value of run
     except FileNotFoundError:
          garbage = 0
-    
-    #trainSet,valSet,vocab = get_data()
-    trainSet,valSet,vocab = preprocess_data(ns.train,ns.val)
-    
+
+    #To prevent all launched threads from loading dataframes simultaneously
+    time.sleep(time_offset)
     start_time = time.time()
+    trainSet,valSet,vocab = get_data()     
     start_date = datetime.datetime.now()
     with tf.device('/cpu:0'):
         if lstm_type == "Unconditioned":
@@ -277,10 +274,11 @@ def list_helper(x,mult):
     return outList
 
 #Returns permutation corresponding to startCoords + its 4 greater neighbors
-def gen_perm(ns,startCoords,units,shape_ratios,embeddings,multiplier):
+def gen_perm(startCoords,units,shape_ratios,embeddings,multiplier):
     out = []
     coord_list = []
     fields_list = [units,shape_ratios,embeddings,multiplier]
+    time_delay = 0
     for i in range(-1,7):
         currCoords = startCoords.copy()
         if i >= 4:  #This case implements a way to search over multiple shape ratios
@@ -292,10 +290,12 @@ def gen_perm(ns,startCoords,units,shape_ratios,embeddings,multiplier):
             continue
         if embeddings[currCoords[2]] >= units[currCoords[0]]:
             continue
+        if i%2 == 1:
+            time_delay += 300
         shapes = [list_helper(x,multiplier[currCoords[3]]) for x in shape_ratios] #Apply list_helper to each list in shape_ratios
-        out.append((ns,LAGGED_DAYS,units[currCoords[0]],shapes[currCoords[1]],
+        out.append((time_delay,LAGGED_DAYS,units[currCoords[0]],shapes[currCoords[1]],
                     embeddings[currCoords[2]],"Unconditioned",currCoords))
-        out.append((ns,LAGGED_DAYS,units[currCoords[0]],shapes[currCoords[1]],
+        out.append((time_delay,LAGGED_DAYS,units[currCoords[0]],shapes[currCoords[1]],
                     embeddings[currCoords[2]],"Conditioned",currCoords))
         coord_list.append(currCoords)
         coord_list.append(currCoords)
@@ -305,13 +305,13 @@ def gen_perm(ns,startCoords,units,shape_ratios,embeddings,multiplier):
 #Implements a greedy search: Compute delta_val_loss for startCoords and its 4 upper adjacent neighbors
 #If atleast one of the neighbors gives an improvement, choose the neighbor with the best improvement
 #and repeat witht the neighbor as the new staertCoords
-def autotune(ns,shape_ratios,embed_sizes,lstm_units,mult):
+def autotune(shape_ratios,embed_sizes,lstm_units,mult):
     best_loss = 1000               
     improving = True              
-    startCoords = [1,0,0,0]
+    startCoords = [2,0,0,0]
     while(improving):
         improving = False        
-        work_list, coords_list = gen_perm(ns,startCoords,lstm_units,shape_ratios,embed_sizes,mult)
+        work_list, coords_list = gen_perm(startCoords,lstm_units,shape_ratios,embed_sizes,mult)
         with mp.Pool(processes=8) as pool:           
             results = pool.starmap(train_and_test_models,work_list)
             if results[0] < best_loss:
@@ -328,13 +328,9 @@ def autotune(ns,shape_ratios,embed_sizes,lstm_units,mult):
 if __name__ == '__main__':
     
     #restrict all processes to 100 cores
-    tf.config.threading.set_intra_op_parallelism_threads(100)
-    tf.config.threading.set_inter_op_parallelism_threads(100)
+    #tf.config.threading.set_intra_op_parallelism_threads(100)
+    #tf.config.threading.set_inter_op_parallelism_threads(100)
     
-    #Share train and val dataframes across processes 
-    mgr = Manager()
-    ns = mgr.Namespace()
-    ns.train, ns.val = load_dataframes()
     
     #Comprehensive list of reasonable hyperparameter values
     shape_ratios = [[1],[1,1],[1,1,1],[1,1,1,1],[4,1],[8,4,1],[16,8,4,1],[8,1],[16,8,1],[4,2,1,1]]
@@ -342,5 +338,5 @@ if __name__ == '__main__':
     lstm_units = [8,16,32,64,128]
     mult = [2,4,6,8]
     
-    optimum = autotune(ns,shape_ratios,embed_sizes,lstm_units,mult)
+    optimum = autotune(shape_ratios,embed_sizes,lstm_units,mult)
     print(f"Best Validation Loss: {optimum}")
