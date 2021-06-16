@@ -225,15 +225,17 @@ if CATEGORICALS is None:
 # %%
 #### LOAD DATA ####
 
+cols_list = list(COLUMNS.keys())
+
 print_header("Data setup")
 
 timer_load = Timer("Loading...")
 if ROWS is not None:
-    train = pd.read_csv(TRAIN_FILE, parse_dates=["date"], nrows=ROWS)
-    val = pd.read_csv(VAL_FILE, parse_dates=["date"], nrows=ROWS//2)
+    train = pd.read_csv(TRAIN_FILE, nrows=ROWS, usecols=cols_list)
+    val = pd.read_csv(VAL_FILE, nrows=ROWS//2, usecols=cols_list)
 else:
-    train = pd.read_csv(TRAIN_FILE, parse_dates=["date"])
-    val = pd.read_csv(VAL_FILE, parse_dates=["date"])
+    train = pd.read_csv(TRAIN_FILE, usecols=cols_list)
+    val = pd.read_csv(VAL_FILE, usecols=cols_list)
 timer_load.done()
 
 timer_cast = Timer("Casting values...")
@@ -337,8 +339,8 @@ if MAKE_PREDICTIONS:
     print_header("Final data setup")
 
     timer_load = Timer("Loading...")
-    train = pd.read_csv(FINAL_TRAIN_FILE, parse_dates=["date"])
-    val = pd.read_csv(FINAL_VAL_FILE, parse_dates=["date"])
+    train = pd.read_csv(FINAL_TRAIN_FILE, usecols=cols_list)
+    val = pd.read_csv(FINAL_VAL_FILE, usecols=cols_list)
     timer_load.done()
 
     timer_cast = Timer("Casting values...")
@@ -409,14 +411,14 @@ if MAKE_PREDICTIONS:
         lgb.plot_importance(bst).get_figure().savefig(fig_path)
 
     timer_save_train_pred = Timer("Saving training predictions...")
-    train_predict_df = train.filter(['date','hours','employee_id','prov_id'])
-    train_predict_df.insert(2, "predicted_hours", train_predict, True)
+    train_predict_df = train.filter(['hours'])
+    train_predict_df.insert(1, "predicted_hours", train_predict, True)
     train_predict_df.to_csv(TRAIN_PREDICTIONS_CSV)
     timer_save_train_pred.done()
 
     timer_save_val_pred = Timer("Saving val predictions...")
-    val_predict_df = val.filter(['date','hours','employee_id','prov_id'])
-    val_predict_df.insert(2, "predicted_hours", val_predict, True)
+    val_predict_df = val.filter(['hours'])
+    val_predict_df.insert(1, "predicted_hours", val_predict, True)
     val_predict_df.to_csv(VAL_PREDICTIONS_CSV)
     timer_save_val_pred.done()
 
