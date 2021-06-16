@@ -9,6 +9,9 @@ import sys
 # %%
 #### CONFIGURATION ####
 
+# Whether to exit if a configuration problem is detected
+THROW_ON_WARNING = True
+
 # Number of rows to truncate to. Unless debugging, should always be set to None
 # so full data files are used.
 ROWS = None
@@ -19,26 +22,8 @@ VAL_FILE = "/export/storage_adgandhi/PBJhours_ML/Data/Intermediate/train_test_va
 
 # Path to CSV for model tuning history
 HISTORY_FILE = "/users/facsupport/rtjoa/lgb_model_30.csv"
-
-# Path to directory for feature importance plots. Avoid using ".." in path
+# Path to directory for feature importance plots.
 FIGURES_FOLDER = "figures_30"
-
-# Whether to train/eval on full dataset
-MAKE_PREDICTIONS = False
-
-# Whether to exit if a configuration problem is detected
-THROW_ON_WARNING = True
-
-# Paths for final training/eval on full dataset
-FINAL_TRAIN_FILE = "/export/storage_adgandhi/PBJhours_ML/Data/Intermediate/train_test_validation/training_set_80perc.csv"
-FINAL_VAL_FILE = "/export/storage_adgandhi/PBJhours_ML/Data/Intermediate/train_test_validation/testing_set_20perc.csv"
-FINAL_HISTORY_FILE = "/users/facsupport/rtjoa/final.csv"
-FINAL_FIGURES_FOLDER = "figures_final" # Avoid using ".." in path
-TRAIN_PREDICTIONS_CSV = "train_80perc_predictions.csv"
-VAL_PREDICTIONS_CSV = "val_80perc_predictions.csv"
-
-# Value to fill NA values with
-FILL_NA = None
 
 # Ensure we don't save truncated output to same place
 if ROWS is not None:
@@ -66,9 +51,8 @@ COLUMNS = {
     "hours_l28": np.double,
 }
 
-# List of columns to treat as categorical variables.
-# Set to None to autogenerate based on COLUMNS.
-CATEGORICALS = None
+# Value to fill NA values with
+FILL_NA = None
 
 # LightGBM parameters to tune, and options to pick from for each
 PARAM_AXES = {
@@ -95,6 +79,17 @@ INIT_PARAMS = {
 # After how many rounds of no improvement in validation loss to stop training,
 # then revert back to the best iteration.
 EARLY_STOPPING_ROUNDS = 5
+
+# Whether to train/eval on full dataset
+MAKE_PREDICTIONS = False
+
+# Paths for final training/eval on full dataset
+FINAL_TRAIN_FILE = "/export/storage_adgandhi/PBJhours_ML/Data/Intermediate/train_test_validation/training_set_80perc.csv"
+FINAL_VAL_FILE = "/export/storage_adgandhi/PBJhours_ML/Data/Intermediate/train_test_validation/testing_set_20perc.csv"
+FINAL_HISTORY_FILE = "/users/facsupport/rtjoa/final.csv"
+FINAL_FIGURES_FOLDER = "figures_final"
+TRAIN_PREDICTIONS_CSV = "train_80perc_predictions.csv"
+VAL_PREDICTIONS_CSV = "val_80perc_predictions.csv"
 
 # %%
 #### UTILITY ####
@@ -180,6 +175,11 @@ if ROWS is not None:
     warn(f"Truncating to {ROWS} rows. Set ROWS=None for meaningful results.")
 
 if not os.path.isdir(FIGURES_FOLDER):
+    if ".." in FIGURES_FOLDER:
+        warn(
+            'FIGURES_FOLDER does not exist and path contains ".."'
+            + "\nPlease use an absolute path or create the folder manually."
+        )
     try:
         os.makedirs(FIGURES_FOLDER)
     except Exception as e:
@@ -188,7 +188,12 @@ if not os.path.isdir(FIGURES_FOLDER):
             + f" Feature importance plots will not be saved.\n{e}"
         )
 
-if not os.path.isdir(FINAL_FIGURES_FOLDER):
+if MAKE_PREDICTIONS and not os.path.isdir(FINAL_FIGURES_FOLDER):
+    if ".." in FINAL_FIGURES_FOLDER:
+        warn(
+            'FINAL_FIGURES_FOLDER does not exist and path contains ".."'
+            + "\nPlease use an absolute path or create the folder manually."
+        )
     try:
         os.makedirs(FINAL_FIGURES_FOLDER)
     except Exception as e:
@@ -213,14 +218,12 @@ print_kv("FINAL_TRAIN_FILE", FINAL_TRAIN_FILE)
 print_kv("FINAL_VAL_FILE", FINAL_VAL_FILE)
 print_kv("FINAL_FIGURES_FOLDER", FINAL_FIGURES_FOLDER)
 print_dict("COLUMNS", COLUMNS)
-print_kv("CATEGORICALS", CATEGORICALS)
 print_dict("PARAM_AXES", PARAM_AXES)
 print_dict("INIT_PARAMS", INIT_PARAMS)
 
-if CATEGORICALS is None:
-    CATEGORICALS = [col for col, col_type in COLUMNS.items() if col_type == "category"]
-    print(f"Set CATEGORICALS to {CATEGORICALS}")
-    print()
+CATEGORICALS = [col for col, col_type in COLUMNS.items() if col_type == "category"]
+print(f"Set categoricals to {CATEGORICALS}")
+print()
 
 # %%
 #### LOAD DATA ####
