@@ -24,7 +24,7 @@ HISTORY_FILE = "/users/facsupport/rtjoa/lgb_model_30.csv"
 FIGURES_FOLDER = "figures_30"
 
 # Whether to train/eval on full dataset
-MAKE_PREDICTIONS = True
+MAKE_PREDICTIONS = False
 
 # Whether to exit if a configuration problem is detected
 THROW_ON_WARNING = True
@@ -72,9 +72,9 @@ CATEGORICALS = None
 
 # LightGBM parameters to tune, and options to pick from for each
 PARAM_AXES = {
-    "learning_rate": [0.01],
-    "num_leaves": [4000],
-    "min_data_in_leaf": [20],
+    "num_leaves": [50, 100, 200, 500, 1000, 2000, 4000, 6000],
+    "learning_rate": [0.005, 0.01, 0.02, 0.05, 0.1, 0.2],
+    "min_data_in_leaf": [1, 5, 15, 18, 20, 22, 25],
 }
 
 # Parameters for LightGBM training. Those also defined in PARAM_AXES above will
@@ -82,7 +82,7 @@ PARAM_AXES = {
 INIT_PARAMS = {
     # Tuned params
     "num_leaves": 4000,
-    'learning_rate': 0.1,
+    'learning_rate': 0.01,
     'min_data_in_leaf': 20,
     # Other params
     'metric': 'mse',
@@ -127,7 +127,7 @@ def print_dict(name, dict_obj):
 # Append dict to CSV, creating new columns as needed
 def log_model_info(model_info, path):
     try:
-        df = pd.read_csv(HISTORY_FILE)
+        df = pd.read_csv(path)
     except FileNotFoundError:
         print(f"History csv not found at {path}. Creating new file.")
         df = pd.DataFrame()
