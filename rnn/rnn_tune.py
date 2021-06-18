@@ -16,8 +16,8 @@ TRAIN_PATH = "/export/storage_adgandhi/PBJhours_ML/Data/Intermediate/train_test_
 VAL_PATH = "/export/storage_adgandhi/PBJhours_ML/Data/Intermediate/train_test_validation/crossvalidation_set_30.csv"
 
 # Make print flush by default
-def print(*objects, sep=' ', end='\n', file=sys.stdout, flush=True):
-    __builtins__.print(*objects, sep=sep, end=end, file=file, flush=flush)
+#def print(*objects, sep=' ', end='\n', file=sys.stdout, flush=True):
+#    __builtins__.print(*objects, sep=sep, end=end, file=file, flush=flush)
 
 #Logs hyperparameter specifications and other attributes of each run into a csv file
 def log_model_info(model_info, path):
@@ -67,6 +67,7 @@ def mask_nan(frame):
 
 #Loads and preprocesses data from training_set.csv and crossvalidation_set.csv
 def get_data():
+    print("Called")
     nrows = None
     include_fields = ['hours','prov_id','day_of_week','avg_employees','perc_hours_today_before',
                       'perc_hours_yesterday_before', 'perc_hours_tomorrow_before']
@@ -76,7 +77,7 @@ def get_data():
     
     train = pd.read_csv(TRAIN_PATH,nrows=nrows,usecols=include_fields)
     val = pd.read_csv(VAL_PATH,nrows=nrows,usecols=include_fields)
-    
+    print("Loaded")
     #Reorder columns to the order specified in include_fields [hours,prov_id,recurrence block,other block]
     train = train.reindex(columns=include_fields)
     val = val.reindex(columns=include_fields)
@@ -231,6 +232,10 @@ def train_and_test_models(time_offset,recurrence_length,lstm_units,dense_shape,e
     except FileNotFoundError:
          garbage = 0
 
+    #restrict each process to 20 cores
+    tf.config.threading.set_intra_op_parallelism_threads(20)
+    tf.config.threading.set_inter_op_parallelism_threads(20)
+
     #To prevent all launched threads from loading dataframes simultaneously
     time.sleep(time_offset)
     start_time = time.time()
@@ -247,7 +252,7 @@ def train_and_test_models(time_offset,recurrence_length,lstm_units,dense_shape,e
         callbacks = [
         tf.keras.callbacks.LearningRateScheduler(decay)
         ]
-        history = model.fit(trainSet, epochs=EPOCHS, callbacks=callbacks,verbose=0)
+        history = model.fit(trainSet, epochs=EPOCHS, callbacks=callbacks,verbose=1)
         valLoss, metric = model.evaluate(valSet)
    
     time_taken = str(datetime.timedelta(seconds=(time.time()-start_time)))
@@ -292,7 +297,7 @@ def gen_perm(startCoords,units,shape_ratios,embeddings,multiplier):
             continue
         if embeddings[currCoords[2]] >= units[currCoords[0]]:
             continue
-        if i%2 == 1:
+        if i%2 == 0:
             time_delay += 300
         shapes = [list_helper(x,multiplier[currCoords[3]]) for x in shape_ratios] #Apply list_helper to each list in shape_ratios
         out.append((time_delay,LAGGED_DAYS,units[currCoords[0]],shapes[currCoords[1]],
@@ -310,7 +315,7 @@ def gen_perm(startCoords,units,shape_ratios,embeddings,multiplier):
 def autotune(shape_ratios,embed_sizes,lstm_units,mult):
     best_loss = 1000               
     improving = True              
-    startCoords = [2,0,0,0]
+    startCoords = [3,0,0,0]
     while(improving):
         improving = False        
         work_list, coords_list = gen_perm(startCoords,lstm_units,shape_ratios,embed_sizes,mult)
@@ -328,11 +333,6 @@ def autotune(shape_ratios,embed_sizes,lstm_units,mult):
     return best_loss
             
 if __name__ == '__main__':
-    
-    #restrict all processes to 100 cores
-    #tf.config.threading.set_intra_op_parallelism_threads(100)
-    #tf.config.threading.set_inter_op_parallelism_threads(100)
-    
     
     #Comprehensive list of reasonable hyperparameter values
     shape_ratios = [[1],[1,1],[1,1,1],[1,1,1,1],[4,1],[8,4,1],[16,8,4,1],[8,1],[16,8,1],[4,2,1,1]]
