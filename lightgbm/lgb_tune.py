@@ -9,6 +9,9 @@ import sys
 # %%
 #### CONFIGURATION ####
 
+# Whether to exit if a configuration problem is detected
+THROW_ON_WARNING = True
+
 # Number of rows to truncate to. Unless debugging, should always be set to None
 # so full data files are used.
 ROWS = None
@@ -19,20 +22,8 @@ VAL_FILE = "/export/storage_adgandhi/PBJhours_ML/Data/Intermediate/train_test_va
 
 # Path to CSV for model tuning history
 HISTORY_FILE = "/users/facsupport/rtjoa/lgb_model_30.csv"
-
-# Path to directory for feature importance plots
+# Path to directory for feature importance plots.
 FIGURES_FOLDER = "figures_30"
-
-# Paths for final training/eval on full dataset
-FINAL_TRAIN_FILE = "/export/storage_adgandhi/PBJhours_ML/Data/Intermediate/train_test_validation/training_set_80perc.csv"
-FINAL_VAL_FILE = "/export/storage_adgandhi/PBJhours_ML/Data/Intermediate/train_test_validation/testing_set_20perc.csv"
-FINAL_HISTORY_FILE = "/users/facsupport/rtjoa/final.csv"
-FINAL_FIGURES_FOLDER = "figures_final"
-TRAIN_PREDICTIONS_CSV = "train_80perc_predictions.csv"
-VAL_PREDICTIONS_CSV = "val_80perc_predictions.csv"
-
-# Value to fill NA values with
-FILL_NA = None
 
 # Ensure we don't save truncated output to same place
 if ROWS is not None:
@@ -60,14 +51,14 @@ COLUMNS = {
     "hours_l28": np.double,
 }
 
-# List of columsn to treat as categorical variables
-CATEGORICALS = ['job_title', 'pay_type', 'day_of_week']
+# Value to fill NA values with
+FILL_NA = None
 
 # LightGBM parameters to tune, and options to pick from for each
 PARAM_AXES = {
-    "learning_rate": [0.01],
-    "num_leaves": [4000],
-    "min_data_in_leaf": [20],
+    "num_leaves": [50, 100, 200, 500, 1000, 2000, 4000, 6000],
+    "learning_rate": [0.005, 0.01, 0.02, 0.05, 0.1, 0.2],
+    "min_data_in_leaf": [1, 5, 15, 18, 20, 22, 25],
 }
 
 # Parameters for LightGBM training. Those also defined in PARAM_AXES above will
@@ -75,7 +66,7 @@ PARAM_AXES = {
 INIT_PARAMS = {
     # Tuned params
     "num_leaves": 4000,
-    'learning_rate': 0.1,
+    'learning_rate': 0.01,
     'min_data_in_leaf': 20,
     # Other params
     'metric': 'mse',
@@ -88,6 +79,17 @@ INIT_PARAMS = {
 # After how many rounds of no improvement in validation loss to stop training,
 # then revert back to the best iteration.
 EARLY_STOPPING_ROUNDS = 5
+
+# Whether to train/eval on full dataset
+MAKE_PREDICTIONS = False
+
+# Paths for final training/eval on full dataset
+FINAL_TRAIN_FILE = "/export/storage_adgandhi/PBJhours_ML/Data/Intermediate/train_test_validation/training_set_80perc.csv"
+FINAL_VAL_FILE = "/export/storage_adgandhi/PBJhours_ML/Data/Intermediate/train_test_validation/testing_set_20perc.csv"
+FINAL_HISTORY_FILE = "/users/facsupport/rtjoa/final.csv"
+FINAL_FIGURES_FOLDER = "figures_final"
+TRAIN_PREDICTIONS_CSV = "train_80perc_predictions.csv"
+VAL_PREDICTIONS_CSV = "val_80perc_predictions.csv"
 
 # %%
 #### UTILITY ####
@@ -120,7 +122,7 @@ def print_dict(name, dict_obj):
 # Append dict to CSV, creating new columns as needed
 def log_model_info(model_info, path):
     try:
-        df = pd.read_csv(HISTORY_FILE)
+        df = pd.read_csv(path)
     except FileNotFoundError:
         print(f"History csv not found at {path}. Creating new file.")
         df = pd.DataFrame()
@@ -161,6 +163,46 @@ class Timer(object):
         print(msg % self.duration)
 
 # %%
+#### CONFIGURATION VALIDATION ####
+
+def warn(msg):
+    if THROW_ON_WARNING:
+        raise ValueError(f"{msg}\nTo ignore this error, set THROW_ON_WARNING=False.")
+    else:
+        print(f"WARNING: {msg}\n")
+
+if ROWS is not None:
+    warn(f"Truncating to {ROWS} rows. Set ROWS=None for meaningful results.")
+
+if not os.path.isdir(FIGURES_FOLDER):
+    if ".." in FIGURES_FOLDER:
+        warn(
+            'FIGURES_FOLDER does not exist and path contains ".."'
+            + "\nPlease use an absolute path or create the folder manually."
+        )
+    try:
+        os.makedirs(FIGURES_FOLDER)
+    except Exception as e:
+        warn(
+            "Could not create FIGURES_FOLDER directory."
+            + f" Feature importance plots will not be saved.\n{e}"
+        )
+
+if MAKE_PREDICTIONS and not os.path.isdir(FINAL_FIGURES_FOLDER):
+    if ".." in FINAL_FIGURES_FOLDER:
+        warn(
+            'FINAL_FIGURES_FOLDER does not exist and path contains ".."'
+            + "\nPlease use an absolute path or create the folder manually."
+        )
+    try:
+        os.makedirs(FINAL_FIGURES_FOLDER)
+    except Exception as e:
+        warn(
+            "WARNING: Could not create FINAL_FIGURES_FOLDER directory."
+            + f" Feature importance plot for final eval will not be saved.\n{e}"
+        )
+
+# %%
 #### PRINT CONFIGURATION ####
 
 print(datetime.datetime.now())
@@ -168,45 +210,35 @@ print()
 
 print_header("Configuration")
 
-if ROWS is not None:
-    print(f"WARNING: Truncating to {ROWS} rows. Set ROWS=None for meaningful results.\n")
-
-if not os.path.isdir(FIGURES_FOLDER):
-    try:
-        os.makedirs(FIGURES_FOLDER)
-    except Exception as e:
-        print("WARNING: Could not create FIGURES_FOLDER directory. Feature importance plots will not be saved.\n")
-        print(e)
-
-if not os.path.isdir(FINAL_FIGURES_FOLDER):
-    try:
-        os.makedirs(FINAL_FIGURES_FOLDER)
-    except Exception as e:
-        print("WARNING: Could not create FINAL_FIGURES_FOLDER directory. Feature importance plot for final eval will not be saved.\n")
-        print(e)
-
 print_kv("TRAIN_FILE", TRAIN_FILE)
 print_kv("VAL_FILE", VAL_FILE)
 print_kv("TEST_FILE", TRAIN_FILE)
+print_kv("FIGURES_FOLDER", FIGURES_FOLDER)
 print_kv("FINAL_TRAIN_FILE", FINAL_TRAIN_FILE)
 print_kv("FINAL_VAL_FILE", FINAL_VAL_FILE)
+print_kv("FINAL_FIGURES_FOLDER", FINAL_FIGURES_FOLDER)
 print_dict("COLUMNS", COLUMNS)
-print_kv("CATEGORICALS", CATEGORICALS)
 print_dict("PARAM_AXES", PARAM_AXES)
 print_dict("INIT_PARAMS", INIT_PARAMS)
 
+CATEGORICALS = [col for col, col_type in COLUMNS.items() if col_type == "category"]
+print(f"Set categoricals to {CATEGORICALS}")
+print()
+
 # %%
 #### LOAD DATA ####
+
+cols_list = list(COLUMNS.keys())
 
 print_header("Data setup")
 
 timer_load = Timer("Loading...")
 if ROWS is not None:
-    train = pd.read_csv(TRAIN_FILE, parse_dates=["date"], nrows=ROWS)
-    val = pd.read_csv(VAL_FILE, parse_dates=["date"], nrows=ROWS//2)
+    train = pd.read_csv(TRAIN_FILE, nrows=ROWS, usecols=cols_list)
+    val = pd.read_csv(VAL_FILE, nrows=ROWS//2, usecols=cols_list)
 else:
-    train = pd.read_csv(TRAIN_FILE, parse_dates=["date"])
-    val = pd.read_csv(VAL_FILE, parse_dates=["date"])
+    train = pd.read_csv(TRAIN_FILE, usecols=cols_list)
+    val = pd.read_csv(VAL_FILE, usecols=cols_list)
 timer_load.done()
 
 timer_cast = Timer("Casting values...")
@@ -287,7 +319,7 @@ for name in PARAM_AXES:
 
             # Save feature importance figures
             if os.path.isdir(FIGURES_FOLDER):
-                fig_path = os.path.join(FIGURES_FOLDER, f"{desc}.png")
+                fig_path = os.path.join(FIGURES_FOLDER, f"{timer_train.start_time} {desc}.png")
                 lgb.plot_importance(bst).get_figure().savefig(fig_path)
 
             desc_to_val_loss[desc] = val_loss
@@ -306,91 +338,92 @@ for name in PARAM_AXES:
 # %%
 #### LOAD FINAL DATA ####
 
-print_header("Final data setup")
+if MAKE_PREDICTIONS:
+    print_header("Final data setup")
 
-timer_load = Timer("Loading...")
-train = pd.read_csv(FINAL_TRAIN_FILE, parse_dates=["date"])
-val = pd.read_csv(FINAL_VAL_FILE, parse_dates=["date"])
-timer_load.done()
+    timer_load = Timer("Loading...")
+    train = pd.read_csv(FINAL_TRAIN_FILE, usecols=cols_list)
+    val = pd.read_csv(FINAL_VAL_FILE, usecols=cols_list)
+    timer_load.done()
 
-timer_cast = Timer("Casting values...")
-for df in [train, val]:
-    for col, t in COLUMNS.items(): # Cast columns to appropriate type
-        if FILL_NA is not None:
-            df[col].fillna(FILL_NA)
-        df[col] = df[col].astype(t)
-timer_cast.done()
+    timer_cast = Timer("Casting values...")
+    for df in [train, val]:
+        for col, t in COLUMNS.items(): # Cast columns to appropriate type
+            if FILL_NA is not None:
+                df[col].fillna(FILL_NA)
+            df[col] = df[col].astype(t)
+    timer_cast.done()
 
-timer_split = Timer("Splitting into inputs and labels...")
-train_inputs, train_labels = train.drop(['hours'], axis=1).filter(COLUMNS.keys()), train.filter(['hours'])
-val_inputs, val_labels = val.drop(['hours'], axis=1).filter(COLUMNS.keys()), val.filter(['hours'])
-timer_split.done()
-print()
+    timer_split = Timer("Splitting into inputs and labels...")
+    train_inputs, train_labels = train.drop(['hours'], axis=1).filter(COLUMNS.keys()), train.filter(['hours'])
+    val_inputs, val_labels = val.drop(['hours'], axis=1).filter(COLUMNS.keys()), val.filter(['hours'])
+    timer_split.done()
+    print()
 
 # %%
 #### FINAL EVAL ####
 
-params = best_params
+    params = best_params
 
-# Create datasets
-train_data = lgb.Dataset(train_inputs, label=train_labels, categorical_feature=CATEGORICALS)
-val_data = lgb.Dataset(val_inputs, label=val_labels, categorical_feature=CATEGORICALS)
+    # Create datasets
+    train_data = lgb.Dataset(train_inputs, label=train_labels, categorical_feature=CATEGORICALS)
+    val_data = lgb.Dataset(val_inputs, label=val_labels, categorical_feature=CATEGORICALS)
 
-# Short descriptor, made up of params being tuned
-desc = ", ".join(f"{k}:{v}" for k, v in sorted(params.items()) if k in PARAM_AXES)
+    # Short descriptor, made up of params being tuned
+    desc = ", ".join(f"{k}:{v}" for k, v in sorted(params.items()) if k in PARAM_AXES)
 
-# Train, if we have not already tested this config
-timer_train = Timer(f"Final training ({desc})...")        
-evals_result = {}
-bst = lgb.train(params, train_data,
-    valid_sets=[val_data],
-    valid_names=['val_data'],
-    evals_result=evals_result,
-    early_stopping_rounds=EARLY_STOPPING_ROUNDS,
-    num_boost_round=10**5,
-    categorical_feature=CATEGORICALS,
-    verbose_eval=False,
-)
-train_predict = bst.predict(train_inputs)
-val_predict = bst.predict(val_inputs)
-training_loss = ((train_predict - train_labels['hours'])**2).mean()
-val_loss = ((val_predict - val_labels['hours'])**2).mean()
-num_trees = bst.num_trees()
-chosen_iter, total_iters = bst.current_iteration(), len(evals_result['val_data']['l2'])
-timer_train.done(f"chose iter {chosen_iter}/{total_iters} ({num_trees} trees) in %s.")
-print(f"Training loss: {training_loss:.5f} | Val loss: {val_loss:.5f}")
-print()
+    # Train, if we have not already tested this config
+    timer_train = Timer(f"Final training ({desc})...")        
+    evals_result = {}
+    bst = lgb.train(params, train_data,
+        valid_sets=[val_data],
+        valid_names=['val_data'],
+        evals_result=evals_result,
+        early_stopping_rounds=EARLY_STOPPING_ROUNDS,
+        num_boost_round=10**5,
+        categorical_feature=CATEGORICALS,
+        verbose_eval=False,
+    )
+    train_predict = bst.predict(train_inputs)
+    val_predict = bst.predict(val_inputs)
+    training_loss = ((train_predict - train_labels['hours'])**2).mean()
+    val_loss = ((val_predict - val_labels['hours'])**2).mean()
+    num_trees = bst.num_trees()
+    chosen_iter, total_iters = bst.current_iteration(), len(evals_result['val_data']['l2'])
+    timer_train.done(f"chose iter {chosen_iter}/{total_iters} ({num_trees} trees) in %s.")
+    print(f"Training loss: {training_loss:.5f} | Val loss: {val_loss:.5f}")
+    print()
 
-# Save model info and performance
-model_info = params.copy()
-model_info['training_loss'] = training_loss
-model_info['val_loss'] = val_loss
-model_info['num_trees'] = num_trees
-model_info['time_start'] = timer_train.start_time
-model_info['time_duration'] = timer_train.duration
-model_info['iterations'] = bst.current_iteration()
-model_info['truncate_rows'] = ROWS
-model_info['fill_na'] = FILL_NA
-model_info['columns_used'] = ','.join(COLUMNS.keys())
-model_info['user'] = user
-log_model_info(model_info, FINAL_HISTORY_FILE)
+    # Save model info and performance
+    model_info = params.copy()
+    model_info['training_loss'] = training_loss
+    model_info['val_loss'] = val_loss
+    model_info['num_trees'] = num_trees
+    model_info['time_start'] = timer_train.start_time
+    model_info['time_duration'] = timer_train.duration
+    model_info['iterations'] = bst.current_iteration()
+    model_info['truncate_rows'] = ROWS
+    model_info['fill_na'] = FILL_NA
+    model_info['columns_used'] = ','.join(COLUMNS.keys())
+    model_info['user'] = user
+    log_model_info(model_info, FINAL_HISTORY_FILE)
 
-# Save feature importance figures
-if os.path.isdir(FINAL_FIGURES_FOLDER):
-    fig_path = os.path.join(FINAL_FIGURES_FOLDER, f"{desc}.png")
-    lgb.plot_importance(bst).get_figure().savefig(fig_path)
+    # Save feature importance figures
+    if os.path.isdir(FINAL_FIGURES_FOLDER):
+        fig_path = os.path.join(FINAL_FIGURES_FOLDER, f"{desc}.png")
+        lgb.plot_importance(bst).get_figure().savefig(fig_path)
 
-timer_save_train_pred = Timer("Saving training predictions...")
-train_predict_df = train.filter(['date','hours','employee_id','prov_id'])
-train_predict_df.insert(2, "predicted_hours", train_predict, True)
-train_predict_df.to_csv(TRAIN_PREDICTIONS_CSV)
-timer_save_train_pred.done()
+    timer_save_train_pred = Timer("Saving training predictions...")
+    train_predict_df = train.filter(['hours'])
+    train_predict_df.insert(1, "predicted_hours", train_predict, True)
+    train_predict_df.to_csv(TRAIN_PREDICTIONS_CSV)
+    timer_save_train_pred.done()
 
-timer_save_val_pred = Timer("Saving val predictions...")
-val_predict_df = val.filter(['date','hours','employee_id','prov_id'])
-val_predict_df.insert(2, "predicted_hours", val_predict, True)
-val_predict_df.to_csv(VAL_PREDICTIONS_CSV)
-timer_save_val_pred.done()
+    timer_save_val_pred = Timer("Saving val predictions...")
+    val_predict_df = val.filter(['hours'])
+    val_predict_df.insert(1, "predicted_hours", val_predict, True)
+    val_predict_df.to_csv(VAL_PREDICTIONS_CSV)
+    timer_save_val_pred.done()
 
 print()
 print("Finished!")

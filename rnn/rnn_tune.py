@@ -291,7 +291,7 @@ def gen_perm(startCoords,units,shape_ratios,embeddings,multiplier):
         if i >= 4:  #This case implements a way to search over multiple shape ratios
             currCoords[1] += (i-3) # in one search iteration
             i=1
-        if i < 4:
+        if i < 4 and i >= 0:
             currCoords[i] += 1  
         if currCoords[i] >= len(fields_list[i]):
             continue
