@@ -144,16 +144,14 @@ def expand_one_hot(labels,dataset):
     output = tf.concat(outList,1)
     return output
 
-# Inserts a mask equal to LAGGED_DAYS to distinguish nan values from 0
-def mask_nan(df):
-    # Input frame is arranged as follows: prov_id, recurrence cols, other cols
-    for i in range(LAGGED_DAYS):
-        df.insert(
-            mask_start_idx + i, # Insert index
-            f"mask_{i+1}", # Column name
-            df[f"hours_l{i+1}"].isna().astype(int).astype('float32') # Column series
-        )
-    df = df.fillna(0, inplace=True)
+#Inserts a mask equal to LAGGED_DAYS to distinguish nan values from 0
+def mask_nan(frame):
+    mask = frame.isna()
+    #Input frame is arranged as follows: 'hours','prov_id',recurrance block,other block
+    for i in range(1,LAGGED_DAYS+1):
+        frame.insert(1+LAGGED_DAYS+i,f"mask_{i}",mask[f"hours_l{i}"].astype(int).astype('float32'))
+    frame = frame.fillna(0)
+    return frame
 
 
 #Loads and preprocesses data from training_set.csv and crossvalidation_set.csv
