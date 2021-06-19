@@ -15,7 +15,7 @@ import getpass
 ROWS = None
 
 # File inputs/outputs
-LOG_PATH = '/users/facsupport/rtjoa/junk.csv'#'/users/facsupport/asharma/RNN-shifts/output/rnn_autotuning_history.csv'
+LOG_PATH = '/users/facsupport/asharma/RNN-shifts/output/rnn_autotuning_history.csv'
 TRAIN_PATH = '/export/storage_adgandhi/PBJhours_ML/Data/Intermediate/train_test_validation/training_set_30.csv'
 VAL_PATH = '/export/storage_adgandhi/PBJhours_ML/Data/Intermediate/train_test_validation/crossvalidation_set_30.csv'
 
@@ -358,6 +358,12 @@ def train_and_test_models(time_offset,recurrence_length,lstm_units,dense_shape,e
     #print("COMPLETED WORK")
     return valLoss
 
+#takes in list x and multiplies all elements of x by mult
+def list_helper(x,mult):
+    outList = [y*mult for y in x]
+    outList = outList + [1]
+    return outList
+
 #Returns permutation corresponding to startCoords + its 4 greater neighbors
 def gen_perm(startCoords,units,shape_ratios,embeddings,multiplier):
     out = []
@@ -377,6 +383,8 @@ def gen_perm(startCoords,units,shape_ratios,embeddings,multiplier):
             continue
         if i%2 == 0:
             time_delay += 300
+        if i%4 == 0:
+            time_delay = 0
         shapes = [list_helper(x,multiplier[currCoords[3]]) for x in shape_ratios] #Apply list_helper to each list in shape_ratios
         out.append((time_delay,LAGGED_DAYS,units[currCoords[0]],shapes[currCoords[1]],
                     embeddings[currCoords[2]],"Unconditioned",currCoords))
@@ -416,5 +424,5 @@ def autotune(shape_ratios,embed_sizes,lstm_units,mult):
     return best_loss
             
 if __name__ == '__main__':
-    optimum = autotune(ns,SHAPES,EMBED_SIZES,LSTM_UNITS,SHAPE_SCALES,LAGGED_DAYS,EARLY_STOPPING_ROUNDS)
+    optimum = autotune(SHAPES,EMBED_SIZES,LSTM_UNITS,SHAPE_SCALES)
     print(f"Best Validation Loss: {optimum}")
