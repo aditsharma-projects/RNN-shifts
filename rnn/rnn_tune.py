@@ -383,7 +383,7 @@ def gen_perm(startCoords,units,shape_ratios,embeddings,multiplier):
             continue
         if i%2 == 0:
             time_delay += 300
-        if i%4 == 0:
+        if i%3 == 1:
             time_delay = 0
         shapes = [list_helper(x,multiplier[currCoords[3]]) for x in shape_ratios] #Apply list_helper to each list in shape_ratios
         out.append((time_delay,LAGGED_DAYS,units[currCoords[0]],shapes[currCoords[1]],
