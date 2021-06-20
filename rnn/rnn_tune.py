@@ -72,7 +72,7 @@ base_model_info = {
  'time_start':-1,
  'time_duration':-1,
  'Epochs':EPOCHS,
- 'Columns':DESCRIPTOR_COLUMNS,
+ 'Columns':['day_of_week', 'avg_employees', 'perc_hours_today_before', 'perc_hours_yesterday_before', 'perc_hours_tomorrow_before'],
  'LSTM type':"Unconditioned",
  'user':getpass.getuser(),
  'coordinates':[]
