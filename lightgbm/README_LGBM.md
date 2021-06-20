@@ -1,27 +1,5 @@
 # LightGBM Shift Predictor
 
-## Overview - `lgb_tune.py`
-`lgb_tune.py` can find optimal hyperparameters and optionally generate predictions.
-
-To only find hyperparameters:
-1. Set up environment.
-2. Configure "General Configuration" and "Tuning Configuration" described below. Set `MAKE_PREDICTIONS` to `False`.
-3. Run `lgb_tune.py`. Outputs: `HISTORY_FILE` and `FIGURES_FOLDER`.
-
-To find hyperparmeters and generate predictions:
-1. Set up environment.
-2. Configure all globals described below. Set `MAKE_PREDICTIONS` to `True`.
-3. Run `lgb_tune.py`. Outputs: `HISTORY_FILE`, `FIGURES_FOLDER`, `FINAL_HISTORY_FILE`, `FINAL_FIGURES_FOLDER`, `TRAIN_PREDICTIONS_CSV`, and `VAL_PREDICTIONS_CSV`.
-
-## Overview - `lgb_predict.py`
-
-`lgb_predict.py` is a lightweight isolation of the prediction portion of `lgb_tune.py`.
-
-1. Use `lgb_tune.py` to find optimal hyperparameters.
-2. Set `PARAMS` to desired hyperparameters.
-3. Set configuration variables. These variables are a subset of those in `lgb_tune.py` and described below.
-4. Run `lgb_predict.py`. Outputs: `FINAL_HISTORY_FILE`, `FINAL_FIGURES_FOLDER`, `TRAIN_PREDICTIONS_CSV`, and `VAL_PREDICTIONS_CSV`.
-
 ## Environment Setup
 
 ### Create virtual environment (recommended)
@@ -36,7 +14,33 @@ pyenv activate lightgbm
 pip install -r requirements.txt
 ```
 
-## `lgb_tune.py` General Configuration
+# `lgb_tune.py` Overview
+`lgb_tune.py` can find optimal hyperparameters and optionally generate predictions.
+
+To only find hyperparameters:
+1. Set up environment.
+2. Configure "General Configuration" and "Tuning Configuration" described below. Set `MAKE_PREDICTIONS` to `False`.
+3. Run `lgb_tune.py`. Outputs: `HISTORY_FILE` and `FIGURES_FOLDER`.
+
+To find hyperparmeters and generate predictions:
+1. Set up environment.
+2. Configure all globals described below. Set `MAKE_PREDICTIONS` to `True`.
+3. Run `lgb_tune.py`. Outputs: `HISTORY_FILE`, `FIGURES_FOLDER`, `FINAL_HISTORY_FILE`, `FINAL_FIGURES_FOLDER`, `TRAIN_PREDICTIONS_CSV`, and `VAL_PREDICTIONS_CSV`.
+
+# `lgb_predict.py` Overview
+
+`lgb_predict.py` is a lightweight isolation of the prediction portion of `lgb_tune.py`.
+
+1. Use `lgb_tune.py` to find optimal hyperparameters.
+2. Set `PARAMS` to desired hyperparameters.
+3. Set configuration variables. These variables are a subset of those in `lgb_tune.py` and described below.
+4. Run `lgb_predict.py`. Outputs: `FINAL_HISTORY_FILE`, `FINAL_FIGURES_FOLDER`, `TRAIN_PREDICTIONS_CSV`, and `VAL_PREDICTIONS_CSV`.
+
+
+
+# `lgb_tune.py` Configuration
+
+## General Configuration
 
 `THROW_ON_WARNING`: Whether to exit immediately if a configuration problem is detected. (Recommended: `True`)
 
@@ -46,7 +50,7 @@ pip install -r requirements.txt
 
 `EARLY_STOPPING_ROUNDS`: After how many rounds of no improvement in validation loss to stop training and revert back to the best iteration.
 
-## `lgb_tune.py` Tuning Configuration
+## Tuning Configuration
 `TRAIN_FILE`, `VAL_FILE`: Paths to train/validation data files to read from for tuning
 
 `ROWS`: Number of rows to truncate to. Unless debugging, should always be set to `None` so full data files are used.
@@ -61,7 +65,7 @@ pip install -r requirements.txt
 
 `INIT_PARAMS`: Parameters for LightGBM training. Those also defined in PARAM_AXES above will be overriden as the model is tuned.
 
-## `lgb_tune.py` Prediction Configuration
+## Prediction Configuration
 `MAKE_PREDICTIONS`: Whether to use the best hyperparameters found from tuning to train a model and generate predictions on another set of data fiels. Typically, the purpose of this is to tune on a subsample to save time, then make predictions on the full dataset.
 
 `FINAL_TRAIN_FILE`, `FINAL_VAL_FILE`: Paths to train/validation data files to read from for final training and prediction.
