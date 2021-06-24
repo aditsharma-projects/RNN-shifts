@@ -282,9 +282,7 @@ def decay(epoch):
 
 # helper function for lines 228 and 229
 def hash_coordinates(coords):
-    coord_strs = coords[1:-1].split(',') # remove leading and trailing square brackets, separate terms
-    coord_ints = map(int, coord_strs) # map to int
-    return hash(tuple(coord_ints))
+    return int(coords[1]) + int(coords[4])*10 + int(coords[7])*100 + int(coords[10])*1000
 
 # Worker function for multiprocessing Process. Trains an RNN with the specified recurrence length
 def train_and_test_models(time_offset,recurrence_length,lstm_units,dense_shape,embed_dim,lstm_type,coordinates):
@@ -292,8 +290,9 @@ def train_and_test_models(time_offset,recurrence_length,lstm_units,dense_shape,e
     try:
         log_file = pd.read_csv(LOG_PATH)
         log_file['coordinates'] = log_file['coordinates'].apply(hash_coordinates)
-        if hash_coordinates(str(coordinates)) in log_file['coordinates']: 
-            return 10000  #TODO: Return actual loss value of run
+        if hash_coordinates(str(coordinates)) in log_file['coordinates'].unique():
+            matching_trials = log_file.loc[log_file['coordinates']==hash_coordinates(str(coordinates))] 
+            return matching_trials['Val loss'].iloc[0]  
     except FileNotFoundError:
          garbage = 0
 
