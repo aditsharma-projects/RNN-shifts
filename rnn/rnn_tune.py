@@ -85,7 +85,7 @@ base_model_info = {
  'time_start':-1,
  'time_duration':-1,
  'Epochs':EPOCHS,
- 'Columns':DESCRIPTOR_COLUMNS,
+ 'Columns':['day_of_week', 'avg_employees', 'perc_hours_today_before', 'perc_hours_yesterday_before', 'perc_hours_tomorrow_before'],
  'LSTM type':"Unconditioned",
  'user':getpass.getuser(),
  'coordinates':[]
@@ -400,7 +400,7 @@ def gen_perm(startCoords,units,shape_ratios,embeddings,multiplier):
 def autotune(shape_ratios,embed_sizes,lstm_units,mult):
     best_loss = 1000               
     improving = True              
-    startCoords = [3,0,0,0]
+    startCoords = [3,0,1,0]
     while(improving):
         improving = False        
         work_list, coords_list = gen_perm(startCoords,lstm_units,shape_ratios,embed_sizes,mult)
@@ -408,12 +408,11 @@ def autotune(shape_ratios,embed_sizes,lstm_units,mult):
             results = pool.starmap(train_and_test_models,work_list)
 
             # Process losses of results
-            improved = False
             for loss, coords in zip(results, coords_list):
                 if loss < best_loss:
                     best_loss = loss
                     start_coords = coords
-                    improved = True
+                    improving = True
             if improved:
                 rounds_without_improvement = 0
             else:
