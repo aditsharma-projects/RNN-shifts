@@ -35,19 +35,6 @@ LSTM_UNITS = [8,16,32,64,128]
 # Number of days of lagged shifts to feed directly to RNN
 LAGGED_DAYS = 30
 
-# Continuous predictors
-DESCRIPTOR_COLUMNS = ['avg_employees', 'perc_hours_today_before',
-     'perc_hours_yesterday_before', 'perc_hours_tomorrow_before']
-RECURRENCE_COLUMNS = [f"hours_l{i}" for i in range(1, LAGGED_DAYS+1)]
-
-# Categorical predictors
-ONE_HOT_ENCODED_COLUMNS = ['day_of_week']
-EMBEDDED_COLUMN = 'prov_id'
-
-# Column to predict
-PREDICTED_COLUMN = 'hours'
-
-# %%
 #### CONFIGURATION - TRAINING SETTINGS ####
 
 # Number of epochs to train an individual model

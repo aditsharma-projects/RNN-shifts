@@ -81,7 +81,11 @@ INIT_PARAMS = {
 EARLY_STOPPING_ROUNDS = 5
 
 # Whether to train/eval on full dataset
-MAKE_PREDICTIONS = False
+MAKE_PREDICTIONS = True
+
+# Number of rows to truncate final train/val sets to. Unless debugging, should
+# always be set to None so full data files are used.
+FINAL_ROWS = None
 
 # Paths for final training/eval on full dataset
 FINAL_TRAIN_FILE = "/export/storage_adgandhi/PBJhours_ML/Data/Intermediate/train_test_validation/training_set_80perc.csv"
@@ -173,6 +177,9 @@ def warn(msg):
 
 if ROWS is not None:
     warn(f"Truncating to {ROWS} rows. Set ROWS=None for meaningful results.")
+
+if MAKE_PREDICTIONS and FINAL_ROWS is not None:
+    warn(f"Truncating to {FINAL_ROWS} rows. Set FINAL_ROWS=None for meaningful results.")
 
 if not os.path.isdir(FIGURES_FOLDER):
     if ".." in FIGURES_FOLDER:
@@ -342,8 +349,12 @@ if MAKE_PREDICTIONS:
     print_header("Final data setup")
 
     timer_load = Timer("Loading...")
-    train = pd.read_csv(FINAL_TRAIN_FILE, usecols=cols_list)
-    val = pd.read_csv(FINAL_VAL_FILE, usecols=cols_list)
+    if FINAL_ROWS is None:
+        train = pd.read_csv(FINAL_TRAIN_FILE, usecols=cols_list)
+        val = pd.read_csv(FINAL_VAL_FILE, usecols=cols_list)
+    else:
+        train = pd.read_csv(FINAL_TRAIN_FILE, usecols=cols_list, nrows=FINAL_ROWS)
+        val = pd.read_csv(FINAL_VAL_FILE, usecols=cols_list, nrows=FINAL_ROWS)
     timer_load.done()
 
     timer_cast = Timer("Casting values...")
@@ -403,6 +414,7 @@ if MAKE_PREDICTIONS:
     model_info['time_duration'] = timer_train.duration
     model_info['iterations'] = bst.current_iteration()
     model_info['truncate_rows'] = ROWS
+    model_info['final_rows'] = FINAL_ROWS
     model_info['fill_na'] = FILL_NA
     model_info['columns_used'] = ','.join(COLUMNS.keys())
     model_info['user'] = user
