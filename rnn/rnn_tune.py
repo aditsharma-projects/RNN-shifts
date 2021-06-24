@@ -49,11 +49,6 @@ EARLY_STOPPING_ROUNDS = 1
 
 BUFFER_SIZE = 10000
 BATCH_SIZE = 128
-# %%
-#### CONFIGURATION VALIDATION ####
-
-if len(RECURRENCE_COLUMNS) != LAGGED_DAYS:
-    raise ValueError(f"Number of recurrence columns ({len(RECURRENCE_COLUMNS)}) must equal LAGGED_DAYS ({LAGGED_DAYS}).")
 
 # %%
 ####
@@ -302,9 +297,9 @@ def train_and_test_models(time_offset,recurrence_length,lstm_units,dense_shape,e
     except FileNotFoundError:
          garbage = 0
 
-    #restrict each process to 20 cores
-    tf.config.threading.set_intra_op_parallelism_threads(20)
-    tf.config.threading.set_inter_op_parallelism_threads(20)
+    #restrict each process to 50 cores
+    tf.config.threading.set_intra_op_parallelism_threads(50)
+    tf.config.threading.set_inter_op_parallelism_threads(50)
 
     #To prevent all launched threads from loading dataframes simultaneously
     time.sleep(time_offset)
@@ -355,13 +350,13 @@ def gen_perm(startCoords,units,shape_ratios,embeddings,multiplier):
     coord_list = []
     fields_list = [units,shape_ratios,embeddings,multiplier]
     time_delay = 0
-    for i in range(-1,7):
+    for i in range(-1,4):
         currCoords = startCoords.copy()
         if i >= 4:  #This case implements a way to search over multiple shape ratios
             currCoords[1] += (i-3) # in one search iteration
             i=1
         if i < 4 and i >= 0:
-            currCoords[i] += 1  
+            currCoords[i] += 1 
         if currCoords[i] >= len(fields_list[i]):
             continue
         if embeddings[currCoords[2]] >= units[currCoords[0]]:
@@ -380,18 +375,28 @@ def gen_perm(startCoords,units,shape_ratios,embeddings,multiplier):
             
     return out,coord_list
 
+#interleaves permuations corresponding to all start coordinates provided in starts
+def coordList_wrapper(starts,lstm_units,shape_ratios,embed_sizes,mult):
+    work_list = []
+    coords_list = []
+    for startCoords in starts:
+        work_perm, coords_perm = gen_perm(startCoords,lstm_units,shape_ratios,embed_sizes,mult)
+        work_list.append(work_perm)
+        coords_list.append(coords_perm)
 
+    outList_work = [val for tup in zip(*work_list) for val in tup]
+    outList_coords = [val for tup in zip(*coords_list) for val in tup]
+    return outList_work,outList_coords
 #Implements a greedy search: Compute delta_val_loss for startCoords and its 4 upper adjacent neighbors
 #If atleast one of the neighbors gives an improvement, choose the neighbor with the best improvement
 #and repeat witht the neighbor as the new staertCoords
-def autotune(shape_ratios,embed_sizes,lstm_units,mult):
+def autotune(starts,shape_ratios,embed_sizes,lstm_units,mult):
     best_loss = 1000               
     improving = True              
-    startCoords = [3,0,1,0]
     while(improving):
         improving = False        
-        work_list, coords_list = gen_perm(startCoords,lstm_units,shape_ratios,embed_sizes,mult)
-        with mp.Pool(processes=8) as pool:           
+        work_list, coords_list = coordList_wrapper(starts,lstm_units,shape_ratios,embed_sizes,mult)
+        with mp.Pool(processes=4) as pool:           
             results = pool.starmap(train_and_test_models,work_list)
 
             # Process losses of results
@@ -408,5 +413,6 @@ def autotune(shape_ratios,embed_sizes,lstm_units,mult):
     return best_loss
             
 if __name__ == '__main__':
-    optimum = autotune(SHAPES,EMBED_SIZES,LSTM_UNITS,SHAPE_SCALES)
+    starts = [[3,0,0,0],[3,0,2,0],[3,0,4,0],[3,0,0,2],[3,0,2,2]]
+    optimum = autotune(starts,SHAPES,EMBED_SIZES,LSTM_UNITS,SHAPE_SCALES)
     print(f"Best Validation Loss: {optimum}")
