@@ -295,8 +295,8 @@ def train_and_test_models(time_offset,recurrence_length,lstm_units,dense_shape,e
             matching_trials = log_file.loc[log_file['coordinates']==hash_coordinates(str(coordinates))] 
             if LAGGED_DAYS in matching_trials['Recurrence length'].unique():
                 return matching_trials['Val loss'].iloc[0] 
-    #except FileNotFoundError:
-         #garbage = 0
+    except FileNotFoundError:
+         garbage = 0
 
     #restrict each process to 50 cores
     tf.config.threading.set_intra_op_parallelism_threads(50)
