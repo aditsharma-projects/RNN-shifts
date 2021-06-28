@@ -6,6 +6,7 @@ import numpy as np
 import sys
 import multiprocessing as mp
 import getpass
+from random import randrange
 
 # %%
 #### CONFIGURATION - DATA & FILES ####
@@ -16,8 +17,8 @@ ROWS = None
 
 # File inputs/outputs
 LOG_PATH = '/users/facsupport/asharma/RNN-shifts/output/rnn_autotuning_history.csv'
-TRAIN_PATH = '/export/storage_adgandhi/PBJhours_ML/Data/Intermediate/train_test_validation/training_set_30.csv'
-VAL_PATH = '/export/storage_adgandhi/PBJhours_ML/Data/Intermediate/train_test_validation/crossvalidation_set_30.csv'
+TRAIN_PATH = '/export/storage_adgandhi/PBJhours_ML/Data/Intermediate/train_test_validation/training_set_60.csv'
+VAL_PATH = '/export/storage_adgandhi/PBJhours_ML/Data/Intermediate/train_test_validation/crossvalidation_set_60.csv'
 
 # Ensure we don't save truncated output to same place
 if ROWS is not None:
@@ -33,7 +34,7 @@ EMBED_SIZES = [0,5,10,20,50,100]
 LSTM_UNITS = [8,16,32,64,128]
 
 # Number of days of lagged shifts to feed directly to RNN
-LAGGED_DAYS = 30
+LAGGED_DAYS = 60
 
 #### CONFIGURATION - TRAINING SETTINGS ####
 
@@ -292,9 +293,10 @@ def train_and_test_models(time_offset,recurrence_length,lstm_units,dense_shape,e
         log_file['coordinates'] = log_file['coordinates'].apply(hash_coordinates)
         if hash_coordinates(str(coordinates)) in log_file['coordinates'].unique():
             matching_trials = log_file.loc[log_file['coordinates']==hash_coordinates(str(coordinates))] 
-            return matching_trials['Val loss'].iloc[0]  
-    except FileNotFoundError:
-         garbage = 0
+            if LAGGED_DAYS in matching_trials['Recurrence length'].unique():
+                return matching_trials['Val loss'].iloc[0] 
+    #except FileNotFoundError:
+         #garbage = 0
 
     #restrict each process to 50 cores
     tf.config.threading.set_intra_op_parallelism_threads(50)
@@ -348,8 +350,8 @@ def gen_perm(startCoords,units,shape_ratios,embeddings,multiplier):
     out = []
     coord_list = []
     fields_list = [units,shape_ratios,embeddings,multiplier]
-    time_delay = 0
     for i in range(-1,4):
+        time_delay = randrange(5)*600
         currCoords = startCoords.copy()
         if i >= 4:  #This case implements a way to search over multiple shape ratios
             currCoords[1] += (i-3) # in one search iteration
@@ -360,10 +362,6 @@ def gen_perm(startCoords,units,shape_ratios,embeddings,multiplier):
             continue
         if embeddings[currCoords[2]] >= units[currCoords[0]]:
             continue
-        if i%2 == 0:
-            time_delay += 300
-        if i%3 == 1:
-            time_delay = 0
         shapes = [list_helper(x,multiplier[currCoords[3]]) for x in shape_ratios] #Apply list_helper to each list in shape_ratios
         out.append((time_delay,LAGGED_DAYS,units[currCoords[0]],shapes[currCoords[1]],
                     embeddings[currCoords[2]],"Unconditioned",currCoords))
@@ -395,23 +393,19 @@ def autotune(starts,shape_ratios,embed_sizes,lstm_units,mult):
     while(improving):
         improving = False        
         work_list, coords_list = coordList_wrapper(starts,lstm_units,shape_ratios,embed_sizes,mult)
-        with mp.Pool(processes=4) as pool:           
+        with mp.Pool(processes=6) as pool:           
             results = pool.starmap(train_and_test_models,work_list)
 
             # Process losses of results
             for loss, coords in zip(results, coords_list):
                 if loss < best_loss:
                     best_loss = loss
-                    start_coords = coords
+                    starts= [coords]
                     improving = True
-            if improved:
-                rounds_without_improvement = 0
-            else:
-                rounds_without_improvement += 1
                 
     return best_loss
             
 if __name__ == '__main__':
-    starts = [[3,0,0,0],[3,0,2,0],[3,0,4,0],[3,0,0,2],[3,0,2,2]]
+    starts = [[2,0,0,0],[2,0,2,0],[3,0,0,0],[3,0,2,0],[3,0,0,2]]
     optimum = autotune(starts,SHAPES,EMBED_SIZES,LSTM_UNITS,SHAPE_SCALES)
     print(f"Best Validation Loss: {optimum}")
