@@ -292,12 +292,15 @@ def train_and_test_models(time_offset,recurrence_length,lstm_units,dense_shape,e
         log_file = pd.read_csv(LOG_PATH)
         log_file['coordinates'] = log_file['coordinates'].apply(hash_coordinates)
         if hash_coordinates(str(coordinates)) in log_file['coordinates'].unique():
-            matching_trials = log_file.loc[log_file['coordinates']==hash_coordinates(str(coordinates))] 
+            matching_trials = log_file.loc[log_file['coordinates']==hash_coordinates(str(coordinates))]
+            matching_trials = matching_trials.loc[matching_trials['LSTM type']==lstm_type] 
             if LAGGED_DAYS in matching_trials['Recurrence length'].unique():
+                print(f"Already tested {lstm_type} run with recurrange length {LAGGED_DAYS} and coordinates {coordinates} ")
                 return matching_trials['Val loss'].iloc[0] 
     except FileNotFoundError:
-         garbage = 0
+         pass
 
+    print(f"Testing {lstm_type} run with recurrange length {LAGGED_DAYS} and coordinates {coordinates} ")
     #restrict each process to 50 cores
     tf.config.threading.set_intra_op_parallelism_threads(50)
     tf.config.threading.set_inter_op_parallelism_threads(50)
