@@ -4,12 +4,13 @@ import numpy as np
 from models import RNN
 import os.path
 import json
+import time
 
 SET = "B"
 
 LAGGED_DAYS = 60
 BUFFER_SIZE = 10000
-BATCH_SIZE = 256
+BATCH_SIZE = 2048
 
 
 if SET == "A":
@@ -53,12 +54,16 @@ model.load_weights(tf.train.latest_checkpoint(CHECKPOINT_DIR))
 
 outList = []
 i=0
+start_time = time.time()
 for descriptions,features,labels in dataset:
     i+=1
-    if i%10000 == 0:
-        print(i)
+    if i%1000 == 10:
+        print(f"Completed {i} batches. Last {1000} batches took {time.time()-start_time} seconds")
+        start_time = time.time()
     predictions = model(features)
     outList.append(tf.concat([descriptions,tf.strings.as_string(predictions),tf.strings.as_string(tf.expand_dims(labels,axis=1))],axis=1))
+    if i==steps:
+      break
 
 
 final_tensor = tf.concat(outList,axis=0)
