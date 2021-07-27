@@ -6,7 +6,10 @@ python:
 env:
   - NP_VERSION=1.21.0
   - NP_VERSION=1.18.4
+  - TF_VERSION=2.4
+  - TF_VERSION=2.2
 install: 
   - pip install -r requirements.txt
   - pip install -q numpy==$NP_VERSION
+  - pip install -q tensorflow==$TF_VERSION
 script: python test.py
