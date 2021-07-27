@@ -1,5 +1,6 @@
 import unittest
 import numpy as np
+import boto3
 
 def square(n):
   return n**2
