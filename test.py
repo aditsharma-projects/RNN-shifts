@@ -1,4 +1,5 @@
 import unittest
+import numpy as np
 
 def square(n):
   return n**2
