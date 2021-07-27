@@ -2,7 +2,7 @@ language: python
 python:
   - "2.7"
   - "3.5"
-  - "3.6"
+  - "3.9"
 env:
   - NP_VERSION=1.21.0
   - NP_VERSION=1.18.4
