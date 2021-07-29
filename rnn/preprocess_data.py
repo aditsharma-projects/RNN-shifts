@@ -20,7 +20,7 @@ def mask_nan(frame):
     mask = frame.isna()
     #Input frame is arranged as follows: 'hours','prov_id',recurrance block,other block
     for i in range(1,LAGGED_DAYS+1):
-        frame.insert(1+LAGGED_DAYS+i+2,f"mask_{i}",mask[f"hours_l{i}"].astype(int).astype('float16'))
+        frame.insert(1+LAGGED_DAYS+i+4,f"mask_{i}",mask[f"hours_l{i}"].astype(int).astype('float16'))
     frame = frame.fillna(0)
     return frame
 
@@ -31,12 +31,12 @@ def data_gen(frame):
 #Loads and preprocesses data from training_set.csv and crossvalidation_set.csv
 def get_data():
     nrows = None
-    include_fields = ['hours','employee_id','prov_id','date','day_of_week','avg_employees','perc_hours_today_before',
+    include_fields = ['hours','employee_id','prov_id','date','job_title','pay_type','day_of_week','avg_employees','perc_hours_today_before',
                       'perc_hours_yesterday_before', 'perc_hours_tomorrow_before']
     recurrance_block = []
     for i in range(1,LAGGED_DAYS+1):
         ##Inserts recurrence block starting at index 2
-        include_fields.insert(i+3,f"hours_l{i}")
+        include_fields.insert(i+5,f"hours_l{i}")
         recurrance_block.append(f"hours_l{i}")
 
     A = pd.read_csv(PATH,nrows=nrows,usecols=include_fields,engine='c',dtype={c:np.float16 for c in recurrance_block})
