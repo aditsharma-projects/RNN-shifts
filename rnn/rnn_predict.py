@@ -14,6 +14,9 @@ BUFFER_SIZE = 10000
 BATCH_SIZE = 2048*8
 #BATCH_SIZE = 8
 
+if SET == NET:
+  print("Warning, running predictions on train set")
+
 
 if SET == "A":
   steps = int(555919099/BATCH_SIZE)
@@ -61,12 +64,13 @@ start_time = time.time()
 for descriptions,features,labels in dataset:
     i+=1
     if i%1000 == 10:
-        print(f"Completed {i} batches. Last {1000} batches took {time.time()-start_time} seconds")
+        print(f"Completed {i} batches. Last {1000} batches took {time.time()-start_time} seconds. {100*i/steps} % done")
         start_time = time.time()
     predictions = model(features)
     outList.append(tf.concat([descriptions,tf.strings.as_string(predictions),tf.strings.as_string(tf.expand_dims(labels,axis=1))],axis=1))
     if i==steps:
       break
+
 
 
 final_tensor = tf.concat(outList,axis=0)
@@ -80,5 +84,5 @@ for col in ['employee_id','prov_id','date','job_title','pay_type']:
   frame[col] = frame[col].str.decode('utf-8')
 
 frame[['prediction','hours']] = frame[['prediction','hours']].apply(pd.to_numeric)
-frame.to_csv('/export/storage_adgandhi/PBJhours_ML/Data/Predictions/RNN_60days/'+SET+'pred.csv',index=False)
-#np.savetxt('/export/storage_adgandhi/PBJhours_ML/Data/Predictions/'+SET+'pred.csv',final_tensor.numpy(),header="employee_id,prov_id,date,prediction,hours",fmt='%s',delimiter',')
+frame.to_csv('/export/storage_adgandhi/PBJhours_ML/Data/Predictions/RNN_60days/tmp/'+SET+'pred.csv',index=False)
+print(f"MSE: {((frame.prediction-frame.hours)**2).mean()}")
