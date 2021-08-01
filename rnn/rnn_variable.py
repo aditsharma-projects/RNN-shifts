@@ -1,11 +1,20 @@
 import pandas as pd
 import tensorflow as tf
 import numpy as np
+import os
+import time
 
 INIT_PERIOD = 30
 
-train = pd.read_csv("/export/storage_adgandhi/PBJhours_ML/Data/Intermediate/VariableLengths/train10_sample_sequences.csv").dropna()
+checkpoint_path = "./variable_checkpoints/cp-{epoch:04d}.ckpt"
+CHECKPOINT_DIR = os.path.dirname(checkpoint_path)
+
+include_fields = ['hours','avg_employees_7days','day_of_week','Lemployees']
+
+t = time.time()
+train = pd.read_csv("/export/storage_adgandhi/PBJhours_ML/Data/Intermediate/VariableLengths/train10_sample_sequences.csv",usecols=include_fields).dropna()
 train_coords = pd.read_csv("/export/storage_adgandhi/PBJhours_ML/Data/Intermediate/VariableLengths/train10_sample_coords.csv").dropna()
+print(f"Loaded data... Time taken {time.time()-t} s")
 #val = pd.read_csv("/export/storage_adgandhi/PBJhours_ML/Data/Intermediate/VariableLengths/val5_sample_sequences.csv")
 #val_coords = pd.read_csv("/export/storage_adgandhi/PBJhours_ML/Data/Intermediate/VariableLengths/val5_sample_coords.csv")
 def generate_sequences(offset,dataset):
@@ -25,6 +34,8 @@ def generate_sequences(offset,dataset):
                             frame[start:end+1]['avg_employees_7days'].astype('float32'),
                             frame[start:end+1]['Lemployees'].astype('float32')],axis=1)
             series = tf.concat([series,tf.one_hot(frame[start:end+1]['day_of_week'].astype('float32'),7)],axis=1)
+            initialization_block = tf.convert_to_tensor(np.zeros((10,10))-1,dtype=tf.float32)
+            series = tf.concat([initialization_block,series],axis=0)
         elif offset==1:
             series = frame[start:end+1]['hours'].astype('float32')
         if len(series)>1:
@@ -44,8 +55,8 @@ train_dataset = tf.data.Dataset.zip((train_feautures,train_labels))
 train_dataset = train_dataset.apply(
     tf.data.experimental.bucket_by_sequence_length(
         element_length_func=lambda _,elem: tf.shape(elem),
-        bucket_boundaries=list(range(1,720)),
-        bucket_batch_sizes=[16]*720,
+        bucket_boundaries=list(range(1,720*6)),
+        bucket_batch_sizes=[16]*720*6,
         drop_remainder=False)
 )
 
@@ -64,19 +75,32 @@ class RNN(tf.keras.Model):
     def call(self, inputs, training=False):
         #time_series = tf.expand_dims(inputs,2)  
         x = self.lstm(inputs)
-        x = self.dense(x)
+        #x = self.dense(x)
         return self.out(x)
 
 loss_object = tf.keras.losses.MeanSquaredError()
 def get_loss(predictions,labels):
     return loss_object(predictions[:,INIT_PERIOD:],labels[:,INIT_PERIOD:])
 
+callbacks = [ tf.keras.callbacks.ModelCheckpoint(
+                            filepath=checkpoint_path,
+                            save_weights_only=True,
+                            save_freq = 'epoch'
+            )
+]
+
 model = RNN()
 model.compile(loss=get_loss,
             optimizer=tf.keras.optimizers.Adam(),
             metrics=[tf.keras.metrics.MeanAbsoluteError()])
             
-history = model.fit(train_dataset, epochs=10)
+if os.path.isdir(CHECKPOINT_DIR):
+    model.load_weights(tf.train.latest_checkpoint(CHECKPOINT_DIR))
+    print("Successfully loaded checkpoint")
+
+
+if __name__ == "__main__":
+    history = model.fit(train_dataset, callbacks=callbacks, epochs=5)
 
 
 
