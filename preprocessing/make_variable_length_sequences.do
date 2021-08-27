@@ -19,7 +19,7 @@ keep if inlist(job_title, ///
 	"Nurse Aide in Training":job_title_label, ///
 	"Medication Aide/Technician":job_title_label, ///
 	"Licensed Practical/Vocational Nurse":job_title_label, ///
-	"Licensed Practical/Vocational Nurse with Administrative Duties":job_title_label ///
+	"Licensed Practical/Vocational Nurse with Administrative Duties":job_title_label, ///
 	"Registered Nurse":job_title_label, ///
 	"Registered Nurse Director of Nursing":job_title_label, ///
 	"Registered Nurse with Administrative Duties":job_title_label)
