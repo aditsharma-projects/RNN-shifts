@@ -16,9 +16,12 @@ from random import randrange
 ROWS = None
 
 # File inputs/outputs
+#LOG_PATH = '/users/facsupport/asharma/RNN-shifts/output/rnn_autotuning_history.csv'
+#TRAIN_PATH = '/export/storage_adgandhi/PBJhours_ML/Data/Intermediate/train_test_validation/training_set_60.csv'
+#VAL_PATH = '/export/storage_adgandhi/PBJhours_ML/Data/Intermediate/train_test_validation/crossvalidation_set_60.csv'
 LOG_PATH = '/users/facsupport/asharma/RNN-shifts/output/rnn_autotuning_history.csv'
-TRAIN_PATH = '/export/storage_adgandhi/PBJhours_ML/Data/Intermediate/train_test_validation/training_set_60.csv'
-VAL_PATH = '/export/storage_adgandhi/PBJhours_ML/Data/Intermediate/train_test_validation/crossvalidation_set_60.csv'
+TRAIN_PATH = '/export/storage_adgandhi/PBJhours_ML/Data/Intermediate/Length60/train10_sample_sequences.csv'
+VAL_PATH = '/export/storage_adgandhi/PBJhours_ML/Data/Intermediate/Length60/val5_sample_sequences.csv'
 
 # Ensure we don't save truncated output to same place
 if ROWS is not None:
@@ -31,7 +34,7 @@ if ROWS is not None:
 SHAPES = [[1],[1,1],[1,1,1],[1,1,1,1],[4,1],[8,4,1],[16,8,4,1],[8,1],[16,8,1],[4,2,1,1]]
 SHAPE_SCALES = [2,4,6,8]
 EMBED_SIZES = [0,5,10,20,50,100]
-LSTM_UNITS = [8,16,32,64,128]
+LSTM_UNITS = [8,16,32,64,128,256]
 
 # Number of days of lagged shifts to feed directly to RNN
 LAGGED_DAYS = 60
@@ -132,7 +135,8 @@ def mask_nan(frame):
     mask = frame.isna()
     #Input frame is arranged as follows: 'hours','prov_id',recurrance block,other block
     for i in range(1,LAGGED_DAYS+1):
-        frame.insert(1+LAGGED_DAYS+i,f"mask_{i}",mask[f"hours_l{i}"].astype(int).astype('float32'))
+        #frame.insert(1+LAGGED_DAYS+i,f"mask_{i}",mask[f"hours_l{i}"].astype(int).astype('float32'))
+        frame.insert(1+LAGGED_DAYS+i,f"mask_{i}",mask[f"L{i}_hours"].astype(int).astype('float32'))
     frame = frame.fillna(0)
     return frame
 
@@ -140,11 +144,13 @@ def mask_nan(frame):
 #Loads and preprocesses data from training_set.csv and crossvalidation_set.csv
 def get_data():
     nrows = None
-    include_fields = ['hours','prov_id','day_of_week','avg_employees','perc_hours_today_before',
-                      'perc_hours_yesterday_before', 'perc_hours_tomorrow_before']
+    #include_fields = ['hours','prov_id','day_of_week','avg_employees','perc_hours_today_before',
+    #                  'perc_hours_yesterday_before', 'perc_hours_tomorrow_before']
+    include_fields = ['hours','prov_id','day_of_week','avg_employees_7days']
     for i in range(1,LAGGED_DAYS+1):
         ##Inserts recurrence block starting at index 2
-        include_fields.insert(i+1,f"hours_l{i}")
+        #include_fields.insert(i+1,f"hours_l{i}")
+        include_fields.insert(i+1,f"L{i}_hours")
     
     train = pd.read_csv(TRAIN_PATH,nrows=nrows,usecols=include_fields)
     val = pd.read_csv(VAL_PATH,nrows=nrows,usecols=include_fields)
@@ -396,7 +402,7 @@ def autotune(starts,shape_ratios,embed_sizes,lstm_units,mult):
     while(improving):
         improving = False        
         work_list, coords_list = coordList_wrapper(starts,lstm_units,shape_ratios,embed_sizes,mult)
-        with mp.Pool(processes=6) as pool:           
+        with mp.Pool(processes=8) as pool:           
             results = pool.starmap(train_and_test_models,work_list)
 
             # Process losses of results
@@ -409,6 +415,6 @@ def autotune(starts,shape_ratios,embed_sizes,lstm_units,mult):
     return best_loss
             
 if __name__ == '__main__':
-    starts = [[2,0,0,0],[2,0,2,0],[3,0,0,0],[3,0,2,0],[3,0,0,2]]
+    starts = [[1,0,0,0],[2,0,0,0],[3,0,0,0],[3,0,2,0],[3,0,0,2]]
     optimum = autotune(starts,SHAPES,EMBED_SIZES,LSTM_UNITS,SHAPE_SCALES)
     print(f"Best Validation Loss: {optimum}")
