@@ -32,7 +32,7 @@ def pad_collate(batch):
   (xx, yy) = zip(*batch)
   x_lens = [len(x) for x in xx]
   y_lens = [len(y) for y in yy]
-  print(f"x_lens: {x_lens}")
+  #print(f"x_lens: {x_lens}")
 
   xx_pad = pad_sequence(xx, batch_first=True, padding_value=-1)
   yy_pad = pad_sequence(yy, batch_first=True, padding_value=-1)
@@ -42,7 +42,7 @@ def pad_collate(batch):
 train_set = Variable_Dataset("/export/storage_adgandhi/PBJhours_ML/Data/Intermediate/VariableLengths/train10_sample_sequences.csv",
                              "/export/storage_adgandhi/PBJhours_ML/Data/Intermediate/VariableLengths/train10_sample_coords.csv")
 
-train_dataloader = DataLoader(train_set, batch_size=4, shuffle=True, collate_fn=pad_collate)
+train_dataloader = DataLoader(train_set, batch_size=64, shuffle=True, collate_fn=pad_collate)
 
 class RNN(nn.Module):
     def __init__(self, hidden_dim):
@@ -63,9 +63,7 @@ class RNN(nn.Module):
 model = RNN(64)
 loss_function = nn.MSELoss()
 optimizer = torch.optim.SGD(model.parameters(), lr=0.1)
-print()
-print()
-for epoch in range(10):
+for epoch in range(2):
     for (idx,(x_padded, y_padded, x_lens, y_lens)) in enumerate(train_dataloader):
         model.zero_grad()
 
@@ -75,3 +73,19 @@ for epoch in range(10):
         loss.backward()
         optimizer.step()
 
+eval_dataloader = DataLoader(train_set, batch_size=1, shuffle=True, collate_fn=pad_collate)
+total_loss = 0
+total_days = 0
+for (idx,(x_padded, y_padded, x_lens, y_lens)) in enumerate(eval_dataloader):
+    predictions = model(x_padded,x_lens)
+    loss = loss_function(predictions,y_padded)
+    days = len(x_padded)
+    total_loss += loss*days
+    total_days += days
+    if idx%1000 == 0:
+        print(f"Current MSE: {total_loss/total_days}")
+        #if len(x_padded[0])<=10:
+        #            print(f"Sample output: {predictions}")
+        #            print(f"True output: {y_padded}")    
+
+print(f"Final MSE: {total_loss/total_days}")
