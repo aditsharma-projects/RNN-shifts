@@ -33,7 +33,7 @@ if ROWS is not None:
 # Hyperparameter choices
 SHAPES = [[1],[1,1],[1,1,1],[1,1,1,1],[4,1],[8,4,1],[16,8,4,1],[8,1],[16,8,1],[4,2,1,1]]
 SHAPE_SCALES = [2,4,6,8]
-EMBED_SIZES = [0,5,10,20,50,100]
+EMBED_SIZES = [0]
 LSTM_UNITS = [8,16,32,64,128,256]
 
 # Number of days of lagged shifts to feed directly to RNN
