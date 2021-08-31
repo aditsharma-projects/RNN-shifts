@@ -415,6 +415,6 @@ def autotune(starts,shape_ratios,embed_sizes,lstm_units,mult):
     return best_loss
             
 if __name__ == '__main__':
-    starts = [[1,0,0,0],[2,0,0,0],[3,0,0,0],[3,0,2,0],[3,0,0,2]]
+    starts = [[3,0,0,0],[3,0,2,0],[3,0,0,2]]
     optimum = autotune(starts,SHAPES,EMBED_SIZES,LSTM_UNITS,SHAPE_SCALES)
     print(f"Best Validation Loss: {optimum}")
