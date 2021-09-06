@@ -63,15 +63,17 @@ class RNN(nn.Module):
 model = RNN(64)
 loss_function = nn.MSELoss()
 optimizer = torch.optim.SGD(model.parameters(), lr=0.1)
-for epoch in range(2):
+for epoch in range(1):
     for (idx,(x_padded, y_padded, x_lens, y_lens)) in enumerate(train_dataloader):
         model.zero_grad()
 
         predictions_padded = model(x_padded,x_lens)
         loss = loss_function(predictions_padded,y_padded)
-        print(f"Loss: {loss}")
+        print(f"Loss: {loss}  idx: {idx}")
         loss.backward()
         optimizer.step()
+        if idx+1%500==0:
+            break
 
 eval_dataloader = DataLoader(train_set, batch_size=1, shuffle=True, collate_fn=pad_collate)
 total_loss = 0

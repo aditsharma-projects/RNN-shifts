@@ -6,7 +6,7 @@ import os.path
 import json
 
 SET = "B"
-EXPERIMENTAL = True
+EXPERIMENTAL = False
 
 LAGGED_DAYS = 60
 BUFFER_SIZE = 10000
@@ -48,7 +48,7 @@ def pack(features, label):
 
 dataset = dataset.map(pack)
 
-INITIAL_LEARNING_RATE = 0.001
+INITIAL_LEARNING_RATE = 0.000005
 def decay(epoch):
   if epoch < 3:
     return INITIAL_LEARNING_RATE
@@ -68,10 +68,8 @@ if os.path.isdir(CHECKPOINT_DIR):
 callbacks = [tf.keras.callbacks.LearningRateScheduler(decay),
             tf.keras.callbacks.ModelCheckpoint(
                             filepath=checkpoint_path,
-                            monitor = 'loss',
                             save_weights_only=True,
-                            save_freq = 10000,
-                            save_best_only=True
+                            save_freq = 1000,
             )
 ]
 history = model.fit(dataset, epochs=10, callbacks=callbacks,steps_per_epoch=steps)

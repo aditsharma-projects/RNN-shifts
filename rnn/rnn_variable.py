@@ -4,7 +4,8 @@ import numpy as np
 import os
 import time
 
-INIT_PERIOD = 30
+INIT_PERIOD = 10
+INITIALIZATION_BLOCK = 30
 
 checkpoint_path = "./variable_checkpoints/cp-{epoch:04d}.ckpt"
 CHECKPOINT_DIR = os.path.dirname(checkpoint_path)
@@ -27,18 +28,20 @@ def generate_sequences(offset,dataset):
     for i in range(len(coords)):
         start = int(coords.iloc[i]['first_index'])
         end = int(coords.iloc[i]['last_index'])
-        if end-start <= INIT_PERIOD:
+        if end-start <= INIT_PERIOD - INITIALIZATION_BLOCK:
             continue
         if offset==0:
             series = tf.stack([frame[start:end+1]['hours'].astype('float32'),
                             frame[start:end+1]['avg_employees_7days'].astype('float32'),
                             frame[start:end+1]['Lemployees'].astype('float32')],axis=1)
             series = tf.concat([series,tf.one_hot(frame[start:end+1]['day_of_week'].astype('float32'),7)],axis=1)
-            initialization_block = tf.convert_to_tensor(np.zeros((10,10))-1,dtype=tf.float32)
-            series = tf.concat([initialization_block,series],axis=0)
+            initialization_block = tf.convert_to_tensor(np.zeros((INITIALIZATION_BLOCK,10))-1,dtype=tf.float32)
+            
         elif offset==1:
             series = frame[start:end+1]['hours'].astype('float32')
-        if len(series)>1:
+            initialization_block = tf.convert_to_tensor(np.zeros((INITIALIZATION_BLOCK))-1,dtype=tf.float32)
+        series = tf.concat([initialization_block,series],axis=0)
+        if len(series)>1 and not tf.math.reduce_any(tf.math.is_nan(series)):
             yield series[offset:len(series)-1+offset]
 
     
@@ -85,13 +88,13 @@ def get_loss(predictions,labels):
 callbacks = [ tf.keras.callbacks.ModelCheckpoint(
                             filepath=checkpoint_path,
                             save_weights_only=True,
-                            save_freq = 'epoch'
+                            save_freq = 100
             )
 ]
 
 model = RNN()
 model.compile(loss=get_loss,
-            optimizer=tf.keras.optimizers.Adam(),
+            optimizer=tf.keras.optimizers.Adam(learning_rate=0.00005),
             metrics=[tf.keras.metrics.MeanAbsoluteError()])
             
 if os.path.isdir(CHECKPOINT_DIR):
