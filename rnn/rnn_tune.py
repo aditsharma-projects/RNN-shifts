@@ -1,5 +1,5 @@
 import pandas as pd
-import time
+import time, os
 import datetime
 import tensorflow as tf
 import numpy as np
@@ -7,6 +7,7 @@ import sys
 import multiprocessing as mp
 import getpass
 from random import randrange
+import preprocess_data as PREPROCESS
 
 # %%
 #### CONFIGURATION - DATA & FILES ####
@@ -33,7 +34,7 @@ if ROWS is not None:
 # Hyperparameter choices
 SHAPES = [[1],[1,1],[1,1,1],[1,1,1,1],[4,1],[8,4,1],[16,8,4,1],[8,1],[16,8,1],[4,2,1,1]]
 SHAPE_SCALES = [2,4,6,8]
-EMBED_SIZES = [0,5,10,20,50,100]
+EMBED_SIZES = [0]
 LSTM_UNITS = [8,16,32,64,128,256]
 
 # Number of days of lagged shifts to feed directly to RNN
@@ -71,7 +72,7 @@ base_model_info = {
  'time_start':-1,
  'time_duration':-1,
  'Epochs':EPOCHS,
- 'Columns':['day_of_week', 'avg_employees', 'perc_hours_today_before', 'perc_hours_yesterday_before', 'perc_hours_tomorrow_before'],
+ 'Columns':['prov_id','day_of_week','avg_employees_7days'],
  'LSTM type':"Unconditioned",
  'user':getpass.getuser(),
  'coordinates':[]
@@ -106,95 +107,40 @@ def log_model_info(model_info, path):
     df = df.sort_values(by='Val loss')
     df.to_csv(path, index=False)
           
-    
-# Expand categorical variables enumerated in labels to one-hot encodings
-# Takes in pandas dataframe and returns tf tensor 
-# Column ordering is preservered, with the convereted categorical columns dropped from the frame
-# and their one-hot encodings concatenated to the end of the converted tensor
-def expand_one_hot(labels,dataset):
-    outList = []
-    for label in labels:  
-        col = dataset[label]
-        # Generate a dict for all unique values (Don't waste space encoding non important job id's)
-        map = {}
-        index = 0
-        for element in col.unique():
-            map[element] = index
-            index += 1
-        col = col.map(map)
-        tensor = tf.one_hot(col,len(col.unique()))
-        outList.append(tensor)
-        dataset = dataset.drop(columns=[label])
-    
-    outList.insert(0,dataset)
-    output = tf.concat(outList,1)
-    return output
-
-#Inserts a mask equal to LAGGED_DAYS to distinguish nan values from 0
-def mask_nan(frame):
-    mask = frame.isna()
-    #Input frame is arranged as follows: 'hours','prov_id',recurrance block,other block
-    for i in range(1,LAGGED_DAYS+1):
-        #frame.insert(1+LAGGED_DAYS+i,f"mask_{i}",mask[f"hours_l{i}"].astype(int).astype('float32'))
-        frame.insert(1+LAGGED_DAYS+i,f"mask_{i}",mask[f"L{i}_hours"].astype(int).astype('float32'))
-    frame = frame.fillna(0)
-    return frame
-
+def pack(features, label):
+  features.pop('employee_id',None), features.pop('date',None), features.pop('job',None), features.pop('pay_type',None)
+  lst = list(features.values())
+  return tf.stack([tf.cast(i,tf.float32) for i in lst], axis=-1), label
 
 #Loads and preprocesses data from training_set.csv and crossvalidation_set.csv
 def get_data():
-    nrows = None
-    #include_fields = ['hours','prov_id','day_of_week','avg_employees','perc_hours_today_before',
-    #                  'perc_hours_yesterday_before', 'perc_hours_tomorrow_before']
-    include_fields = ['hours','prov_id','day_of_week','avg_employees_7days']
-    for i in range(1,LAGGED_DAYS+1):
-        ##Inserts recurrence block starting at index 2
-        #include_fields.insert(i+1,f"hours_l{i}")
-        include_fields.insert(i+1,f"L{i}_hours")
+    if not os.path.isdir("intermediate_data"): os.makedirs("intermediate_data")
+
+    PREPROCESS.PATH = TRAIN_PATH
+    PREPROCESS.SAVE = "intermediate_data/train.csv"
+    if(not os.path.isfile(PREPROCESS.SAVE)): PREPROCESS.get_data()
+    print("CREATED TRAIN SET")
+    PREPROCESS.PATH = VAL_PATH
+    PREPROCESS.SAVE = "intermediate_data/val.csv"
+    if(not os.path.isfile(PREPROCESS.SAVE)): PREPROCESS.get_data()
     
-    train = pd.read_csv(TRAIN_PATH,nrows=nrows,usecols=include_fields)
-    val = pd.read_csv(VAL_PATH,nrows=nrows,usecols=include_fields)
-    print("Loaded")
-    #Reorder columns to the order specified in include_fields [hours,prov_id,recurrence block,other block]
-    train = train.reindex(columns=include_fields)
-    val = val.reindex(columns=include_fields)
     
-    #Mask nan values
-    train = mask_nan(train)
-    val = mask_nan(val)
-      
-    #Remove providers that appear in val set but not train
-    train_providers = train['prov_id'].unique()
-    val_providers = val['prov_id'].unique()
-    for value in val_providers:
-        if value not in train_providers:
-            mask = (val['prov_id']!=value)
-            val = val[mask]
+    print("Created and saved datasets")
 
-    # Remap prov_id's between 0 - # providers
-    provider_map = {}
-    index = 0
-    for element in train['prov_id'].unique():
-        provider_map[element]=index
-        index +=1
-    train['prov_id'] = train['prov_id'].map(provider_map)
-    val['prov_id'] = val['prov_id'].map(provider_map)
-
-    #Separate predictors and labels
-    train_inputs, train_labels = train.drop(['hours'], axis=1), train.filter(['hours'])
-    val_inputs, val_labels = val.drop(['hours'], axis=1), val.filter(['hours'])
-
-    vocab_size = len(train_inputs['prov_id'].unique())
-
-    #expand categoricals to one-hot encodings
-    train_inputs = expand_one_hot(['day_of_week'],train_inputs)
-    val_inputs = expand_one_hot(['day_of_week'],val_inputs) 
-    
-    BUFFER_SIZE = 10000
     BATCH_SIZE = 128
-    trainSet = tf.data.Dataset.from_tensor_slices((train_inputs,train_labels)).shuffle(BUFFER_SIZE).batch(BATCH_SIZE,drop_remainder=True)
-    valSet = tf.data.Dataset.from_tensor_slices((val_inputs,val_labels)).shuffle(BUFFER_SIZE).batch(BATCH_SIZE,drop_remainder=True)
-    return trainSet,valSet,vocab_size
+    trainSet = tf.data.experimental.make_csv_dataset(
+    "intermediate_data/train.csv",
+    batch_size=BATCH_SIZE,
+    label_name='hours'
+    )
+    valSet = tf.data.experimental.make_csv_dataset(
+    "intermediate_data/val.csv",
+    batch_size=BATCH_SIZE,
+    label_name='hours'
+    )
+
+    trainSet, valSet = trainSet.map(pack), valSet.map(pack)
+    return trainSet,valSet,1
         
 
 #RNN class, defines attributes of a model
@@ -291,8 +237,9 @@ def decay(epoch):
 def hash_coordinates(coords):
     return int(coords[1]) + int(coords[4])*10 + int(coords[7])*100 + int(coords[10])*1000
 
+
 # Worker function for multiprocessing Process. Trains an RNN with the specified recurrence length
-def train_and_test_models(time_offset,recurrence_length,lstm_units,dense_shape,embed_dim,lstm_type,coordinates):
+def train_and_test_models(step_counts,recurrence_length,lstm_units,dense_shape,embed_dim,lstm_type,coordinates):
     #Check if we've already tested this run
     try:
         log_file = pd.read_csv(LOG_PATH)
@@ -307,14 +254,9 @@ def train_and_test_models(time_offset,recurrence_length,lstm_units,dense_shape,e
          pass
 
     print(f"Testing {lstm_type} run with recurrange length {LAGGED_DAYS} and coordinates {coordinates} ")
-    #restrict each process to 50 cores
-    tf.config.threading.set_intra_op_parallelism_threads(50)
-    tf.config.threading.set_inter_op_parallelism_threads(50)
+    trainSet,valSet,vocab = get_data()
 
-    #To prevent all launched threads from loading dataframes simultaneously
-    time.sleep(time_offset)
-    start_time = time.time()
-    trainSet,valSet,vocab = get_data()     
+    start_time = time.time()     
     start_date = datetime.datetime.now()
     with tf.device('/cpu:0'):
         if lstm_type == "Unconditioned":
@@ -326,8 +268,8 @@ def train_and_test_models(time_offset,recurrence_length,lstm_units,dense_shape,e
             metrics=[tf.keras.metrics.MeanAbsoluteError()])
         
         callbacks = [tf.keras.callbacks.LearningRateScheduler(decay)]
-        history = model.fit(trainSet, epochs=EPOCHS, callbacks=callbacks,verbose=0)
-        valLoss, metric = model.evaluate(valSet)
+        history = model.fit(trainSet, epochs=EPOCHS, callbacks=callbacks,verbose=0,steps_per_epoch=step_counts[0])
+        valLoss, metric = model.evaluate(valSet,steps_per_epoch=step_counts[1])
    
     time_taken = str(datetime.timedelta(seconds=(time.time()-start_time)))
     
@@ -355,12 +297,11 @@ def list_helper(x,mult):
     return outList
 
 #Returns permutation corresponding to startCoords + its 4 greater neighbors
-def gen_perm(startCoords,units,shape_ratios,embeddings,multiplier):
+def gen_perm(startCoords,units,shape_ratios,embeddings,multiplier,step_counts):
     out = []
     coord_list = []
     fields_list = [units,shape_ratios,embeddings,multiplier]
     for i in range(-1,4):
-        time_delay = randrange(5)*600
         currCoords = startCoords.copy()
         if i >= 4:  #This case implements a way to search over multiple shape ratios
             currCoords[1] += (i-3) # in one search iteration
@@ -372,9 +313,9 @@ def gen_perm(startCoords,units,shape_ratios,embeddings,multiplier):
         if embeddings[currCoords[2]] >= units[currCoords[0]]:
             continue
         shapes = [list_helper(x,multiplier[currCoords[3]]) for x in shape_ratios] #Apply list_helper to each list in shape_ratios
-        out.append((time_delay,LAGGED_DAYS,units[currCoords[0]],shapes[currCoords[1]],
+        out.append((step_counts,LAGGED_DAYS,units[currCoords[0]],shapes[currCoords[1]],
                     embeddings[currCoords[2]],"Unconditioned",currCoords))
-        out.append((time_delay,LAGGED_DAYS,units[currCoords[0]],shapes[currCoords[1]],
+        out.append((step_counts,LAGGED_DAYS,units[currCoords[0]],shapes[currCoords[1]],
                     embeddings[currCoords[2]],"Conditioned",currCoords))
         coord_list.append(currCoords)
         coord_list.append(currCoords)
@@ -382,11 +323,11 @@ def gen_perm(startCoords,units,shape_ratios,embeddings,multiplier):
     return out,coord_list
 
 #interleaves permuations corresponding to all start coordinates provided in starts
-def coordList_wrapper(starts,lstm_units,shape_ratios,embed_sizes,mult):
+def coordList_wrapper(starts,lstm_units,shape_ratios,embed_sizes,mult,step_counts):
     work_list = []
     coords_list = []
     for startCoords in starts:
-        work_perm, coords_perm = gen_perm(startCoords,lstm_units,shape_ratios,embed_sizes,mult)
+        work_perm, coords_perm = gen_perm(startCoords,lstm_units,shape_ratios,embed_sizes,mult,step_counts)
         work_list.append(work_perm)
         coords_list.append(coords_perm)
 
@@ -396,13 +337,13 @@ def coordList_wrapper(starts,lstm_units,shape_ratios,embed_sizes,mult):
 #Implements a greedy search: Compute delta_val_loss for startCoords and its 4 upper adjacent neighbors
 #If atleast one of the neighbors gives an improvement, choose the neighbor with the best improvement
 #and repeat witht the neighbor as the new staertCoords
-def autotune(starts,shape_ratios,embed_sizes,lstm_units,mult):
+def autotune(starts,shape_ratios,embed_sizes,lstm_units,mult,step_counts):
     best_loss = 1000               
     improving = True              
     while(improving):
         improving = False        
-        work_list, coords_list = coordList_wrapper(starts,lstm_units,shape_ratios,embed_sizes,mult)
-        with mp.Pool(processes=8) as pool:           
+        work_list, coords_list = coordList_wrapper(starts,lstm_units,shape_ratios,embed_sizes,mult,step_counts)
+        with mp.Pool(processes=10) as pool:           
             results = pool.starmap(train_and_test_models,work_list)
 
             # Process losses of results
@@ -415,6 +356,7 @@ def autotune(starts,shape_ratios,embed_sizes,lstm_units,mult):
     return best_loss
             
 if __name__ == '__main__':
-    starts = [[1,0,0,0],[2,0,0,0],[3,0,0,0],[3,0,2,0],[3,0,0,2]]
-    optimum = autotune(starts,SHAPES,EMBED_SIZES,LSTM_UNITS,SHAPE_SCALES)
+    step_counts = (len(pd.read_csv(TRAIN_PATH,usecols=['hours'])),len(pd.read_csv(VAL_PATH,usecols=['hours'])))
+    starts = [[2,0,0,0],[3,0,0,0],[4,0,0,0]]
+    optimum = autotune(starts,SHAPES,EMBED_SIZES,LSTM_UNITS,SHAPE_SCALES,step_counts)
     print(f"Best Validation Loss: {optimum}")

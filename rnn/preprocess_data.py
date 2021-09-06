@@ -1,12 +1,5 @@
 import pandas as pd
-import time
-import datetime
-import tensorflow as tf
 import numpy as np
-import sys
-import multiprocessing as mp
-import getpass
-from random import randrange
 
 SET = "A"
 
@@ -20,7 +13,7 @@ def mask_nan(frame):
     mask = frame.isna()
     #Input frame is arranged as follows: 'hours','prov_id',recurrance block,other block
     for i in range(1,LAGGED_DAYS+1):
-        frame.insert(1+LAGGED_DAYS+i+4,f"mask_{i}",mask[f"hours_l{i}"].astype(int).astype('float16'))
+        frame.insert(1+LAGGED_DAYS+i+4,f"mask_{i}",mask[f"L{i}_hours"].astype(int).astype('float16'))
     frame = frame.fillna(0)
     return frame
 
@@ -29,17 +22,18 @@ def data_gen(frame):
         yield frame[i]
 
 #Loads and preprocesses data from training_set.csv and crossvalidation_set.csv
-def get_data():
+def get_data(include_fields=None):
     nrows = None
-    include_fields = ['hours','employee_id','prov_id','date','job_title','pay_type','day_of_week','avg_employees','perc_hours_today_before',
-                      'perc_hours_yesterday_before', 'perc_hours_tomorrow_before']
-    recurrance_block = []
-    for i in range(1,LAGGED_DAYS+1):
-        ##Inserts recurrence block starting at index 2
-        include_fields.insert(i+5,f"hours_l{i}")
-        recurrance_block.append(f"hours_l{i}")
+    if include_fields is None: 
+        include_fields = ['hours','employee_id','prov_id','date','job','pay_type','day_of_week','avg_employees_7days']
+        recurrance_block = []
+        for i in range(1,LAGGED_DAYS+1):
+            ##Inserts recurrence block starting at index 2
+            include_fields.insert(i+5,f"L{i}_hours")
+            recurrance_block.append(f"L{i}_hours")
 
-    A = pd.read_csv(PATH,nrows=nrows,usecols=include_fields,engine='c',dtype={c:np.float16 for c in recurrance_block})
+    #A = pd.read_csv(PATH,nrows=nrows,usecols=include_fields,engine='c',dtype={c:np.float16 for c in recurrance_block})
+    A = pd.read_csv(PATH,nrows=nrows,usecols=include_fields,engine='c')
     print("Loaded")
 
     
@@ -57,9 +51,8 @@ def get_data():
     A = pd.concat([A,one_hot],axis=1)
     A.to_csv(SAVE,index=False,header=True)
     ####
-    print("FINSIHED TEMP BLOCK")
     return 0
         
-
-trainSet = get_data()
-print("DONE")
+if __name__ == '__main__':
+    trainSet = get_data()
+    print("DONE")
