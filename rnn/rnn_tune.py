@@ -23,7 +23,7 @@ ROWS = None
 #LOG_PATH = '/users/facsupport/asharma/RNN-shifts/output/rnn_autotuning_history.csv'
 #TRAIN_PATH = '/export/storage_adgandhi/PBJhours_ML/Data/Intermediate/train_test_validation/training_set_60.csv'
 #VAL_PATH = '/export/storage_adgandhi/PBJhours_ML/Data/Intermediate/train_test_validation/crossvalidation_set_60.csv'
-LOG_PATH = '/users/facsupport/asharma/RNN-shifts/output/rnn_autotuning_history.csv'
+LOG_PATH = '/export/storage_adgandhi/PBJhours_ML/Data/Logs/rnn_autotuning_history.csv'
 TRAIN_PATH = '/export/storage_adgandhi/PBJhours_ML/Data/Intermediate/Length60/train10_sample_sequences.csv'
 VAL_PATH = '/export/storage_adgandhi/PBJhours_ML/Data/Intermediate/Length60/val5_sample_sequences.csv'
 
