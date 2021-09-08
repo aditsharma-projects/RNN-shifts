@@ -9,6 +9,9 @@ import getpass
 from random import randrange
 import preprocess_data as PREPROCESS
 
+tf.config.threading.set_intra_op_parallelism_threads(5)
+tf.config.threading.set_inter_op_parallelism_threads(5)
+
 # %%
 #### CONFIGURATION - DATA & FILES ####
 
@@ -75,7 +78,9 @@ base_model_info = {
  'Columns':['prov_id','day_of_week','avg_employees_7days'],
  'LSTM type':"Unconditioned",
  'user':getpass.getuser(),
- 'coordinates':[]
+ 'coordinates':[],
+ 'train_file':TRAIN_PATH,
+ 'last_modified':(os.stat(TRAIN_PATH)).st_mtime,
 }
 
 # Key indices of input columns
@@ -84,9 +89,12 @@ base_model_info = {
 # The recurrence mask columns take up indices LAGGED_DAYS + 1 through LAGGED_DAYS * 2
 # The descriptor columns and one-hot encoded columns follow
 embedded_idx = 0
-recurrence_start_idx = 1
-mask_start_idx = LAGGED_DAYS + 1
-descriptors_start_idx = 2 * LAGGED_DAYS + 1
+#recurrence_start_idx = 1
+#mask_start_idx = LAGGED_DAYS + 1
+#descriptors_start_idx = 2 * LAGGED_DAYS + 1
+recurrence_start_idx = 0
+mask_start_idx = LAGGED_DAYS 
+descriptors_start_idx = 2 * LAGGED_DAYS 
 
 # Override print to flush by default
 def print(*objects, sep=' ', end='\n', file=sys.stdout, flush=True):
@@ -108,35 +116,30 @@ def log_model_info(model_info, path):
     df.to_csv(path, index=False)
           
 def pack(features, label):
-  features.pop('employee_id',None), features.pop('date',None), features.pop('job',None), features.pop('pay_type',None)
+  #features.pop('employee_id',None), features.pop('date',None), features.pop('job',None), features.pop('pay_type',None)
   lst = list(features.values())
   return tf.stack([tf.cast(i,tf.float32) for i in lst], axis=-1), label
 
 #Loads and preprocesses data from training_set.csv and crossvalidation_set.csv
 def get_data():
-    if not os.path.isdir("intermediate_data"): os.makedirs("intermediate_data")
-
-    PREPROCESS.PATH = TRAIN_PATH
-    PREPROCESS.SAVE = "intermediate_data/train.csv"
-    if(not os.path.isfile(PREPROCESS.SAVE)): PREPROCESS.get_data()
-    print("CREATED TRAIN SET")
-    PREPROCESS.PATH = VAL_PATH
-    PREPROCESS.SAVE = "intermediate_data/val.csv"
-    if(not os.path.isfile(PREPROCESS.SAVE)): PREPROCESS.get_data()
-    
-    
-    print("Created and saved datasets")
+    include_fields = ['hours','avg_employees_7days','0','1','2','3','4','5','6']
+    for i in range(1,LAGGED_DAYS+1):
+        include_fields.insert(i,f"L{i}_hours")
+    for i in range(1,LAGGED_DAYS+1):
+        include_fields.insert(i+LAGGED_DAYS,f"mask_{i}")
 
     BATCH_SIZE = 128
     trainSet = tf.data.experimental.make_csv_dataset(
     "intermediate_data/train.csv",
     batch_size=BATCH_SIZE,
-    label_name='hours'
+    label_name='hours',
+    select_columns=include_fields
     )
     valSet = tf.data.experimental.make_csv_dataset(
     "intermediate_data/val.csv",
     batch_size=BATCH_SIZE,
-    label_name='hours'
+    label_name='hours',
+    select_columns=include_fields
     )
 
     trainSet, valSet = trainSet.map(pack), valSet.map(pack)
@@ -243,6 +246,9 @@ def train_and_test_models(step_counts,recurrence_length,lstm_units,dense_shape,e
     #Check if we've already tested this run
     try:
         log_file = pd.read_csv(LOG_PATH)
+        #Check if tested same run on same training set
+        log_file = log_file[log_file['train_file']==TRAIN_PATH]
+        log_file = log_file[log_file['last_modified']==(os.stat(TRAIN_PATH)).st_mtime]
         log_file['coordinates'] = log_file['coordinates'].apply(hash_coordinates)
         if hash_coordinates(str(coordinates)) in log_file['coordinates'].unique():
             matching_trials = log_file.loc[log_file['coordinates']==hash_coordinates(str(coordinates))]
@@ -343,7 +349,7 @@ def autotune(starts,shape_ratios,embed_sizes,lstm_units,mult,step_counts):
     while(improving):
         improving = False        
         work_list, coords_list = coordList_wrapper(starts,lstm_units,shape_ratios,embed_sizes,mult,step_counts)
-        with mp.Pool(processes=10) as pool:           
+        with mp.Pool(processes=16) as pool:           
             results = pool.starmap(train_and_test_models,work_list)
 
             # Process losses of results
@@ -354,9 +360,26 @@ def autotune(starts,shape_ratios,embed_sizes,lstm_units,mult,step_counts):
                     improving = True
                 
     return best_loss
+
+def create_datasets():
+    if not os.path.isdir("intermediate_data"): os.makedirs("intermediate_data")
+
+    PREPROCESS.PATH = TRAIN_PATH
+    PREPROCESS.SAVE = "intermediate_data/train.csv"
+    if(not os.path.isfile(PREPROCESS.SAVE)): PREPROCESS.get_data()
+    print("CREATED TRAIN SET")
+    PREPROCESS.PATH = VAL_PATH
+    PREPROCESS.SAVE = "intermediate_data/val.csv"
+    if(not os.path.isfile(PREPROCESS.SAVE)): PREPROCESS.get_data()
+    
+    
+    print("Created and saved datasets")
             
 if __name__ == '__main__':
-    step_counts = (len(pd.read_csv(TRAIN_PATH,usecols=['hours'])),len(pd.read_csv(VAL_PATH,usecols=['hours'])))
+    create_datasets()
+    step_counts = (int(len(pd.read_csv("intermediate_data/train.csv",usecols=['hours']))/128),int(len(pd.read_csv("intermediate_data/val.csv",usecols=['hours']))/128))
+    #step_counts = (20000,10000)
+    print(step_counts)
     starts = [[2,0,0,0],[3,0,0,0],[4,0,0,0]]
     optimum = autotune(starts,SHAPES,EMBED_SIZES,LSTM_UNITS,SHAPE_SCALES,step_counts)
     print(f"Best Validation Loss: {optimum}")
