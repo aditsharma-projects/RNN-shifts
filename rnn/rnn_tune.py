@@ -96,9 +96,6 @@ recurrence_start_idx = 0
 mask_start_idx = LAGGED_DAYS 
 descriptors_start_idx = 2 * LAGGED_DAYS 
 
-# Override print to flush by default
-def print(*objects, sep=' ', end='\n', file=sys.stdout, flush=True):
-    __builtins__.print(*objects, sep=sep, end=end, file=file, flush=flush)
 
 # Logs hyperparameter specifications and other attributes of each run into a csv file
 def log_model_info(model_info, path):
@@ -275,7 +272,7 @@ def train_and_test_models(step_counts,recurrence_length,lstm_units,dense_shape,e
         
         callbacks = [tf.keras.callbacks.LearningRateScheduler(decay)]
         history = model.fit(trainSet, epochs=EPOCHS, callbacks=callbacks,verbose=0,steps_per_epoch=step_counts[0])
-        valLoss, metric = model.evaluate(valSet,steps_per_epoch=step_counts[1])
+        valLoss, metric = model.evaluate(valSet,steps=step_counts[1])
    
     time_taken = str(datetime.timedelta(seconds=(time.time()-start_time)))
     
@@ -356,10 +353,62 @@ def autotune(starts,shape_ratios,embed_sizes,lstm_units,mult,step_counts):
             for loss, coords in zip(results, coords_list):
                 if loss < best_loss:
                     best_loss = loss
-                    starts= [coords]
+                    starts = [coords]
                     improving = True
                 
     return best_loss
+
+#Searches over optimum hyperparameters one axis at a time
+#SHAPES = [[1],[1,1],[1,1,1],[1,1,1,1],[4,1],[8,4,1],[16,8,4,1],[8,1],[16,8,1],[4,2,1,1]]
+#SHAPE_SCALES = [2,4,6,8]
+#EMBED_SIZES = [0]
+#LSTM_UNITS = [8,16,32,64,128,256]
+def axis_tune(step_counts):
+    best_loss = 1000
+    print("Searching over LSTM UNITS")
+    #train_and_test_models(step_counts,recurrence_length,lstm_units,dense_shape,embed_dim,lstm_type,coordinates)
+    #[units,shape_ratios,embeddings,multiplier]
+    work_list = [(step_counts,LAGGED_DAYS,units,SHAPES[0]*SHAPE_SCALES[0],
+                    EMBED_SIZES[0],"Unconditioned",[idx,0,0,0]) for idx,units in enumerate(LSTM_UNITS)] + [(step_counts,LAGGED_DAYS,units,SHAPES[0]*SHAPE_SCALES[0],
+                    EMBED_SIZES[0],"Conditioned",[idx,0,0,0]) for idx,units in enumerate(LSTM_UNITS)]
+    coord_list = [[i,0,0,0] for i in range(len(LSTM_UNITS))] + [[i,0,0,0] for i in range(len(LSTM_UNITS))]
+
+    with mp.Pool(processes=len(work_list)) as pool:
+        results = pool.starmap(train_and_test_models,work_list)
+        for loss, coords in zip(results, coords_list):
+            if loss<best_loss:
+                best_loss=loss
+                lstm_units = LSTM_UNITS[coords[0]]
+                index = coords[0]
+    
+    #Next search over shapes
+    work_list = [(step_counts,LAGGED_DAYS,lstm_units,shapes*SHAPE_SCALES[0],
+                    EMBED_SIZES[0],"Unconditioned",[index,idx,0,0]) for idx,shapes in enumerate(SHAPES)]+[(step_counts,LAGGED_DAYS,lstm_units,shapes*SHAPE_SCALES[0],
+                    EMBED_SIZES[0],"Conditioned",[index,idx,0,0]) for idx,shapes in enumerate(SHAPES)] 
+    coord_list = [[index,i,0,0] for i in range(len(SHAPES))] + [[index,i,0,0] for i in range(len(SHAPES))]
+    best_loss = 1000
+    with mp.Pool(processes=len(work_list)) as pool:
+        results = pool.starmap(train_and_test_models,work_list)
+        for loss, coords in zip(results, coords_list):
+            if loss<best_loss:
+                best_loss=loss
+                shape = SHAPES[coords[1]]
+                index2 = coords[1]
+    
+    #Finally search over multipliers
+    work_list = [(step_counts,LAGGED_DAYS,lstm_units,shape*mult,
+                    EMBED_SIZES[0],"Unconditioned",[index,index2,0,idx]) for idx,mult in enumerate(SHAPE_SCALES)]+[(step_counts,LAGGED_DAYS,lstm_units,shape*mult,
+                    EMBED_SIZES[0],"Conditioned",[index,index2,0,idx]) for idx,mult in enumerate(SHAPE_SCALES)] 
+    coord_list = [[index,index2,0,i] for i in range(len(SHAPE_SCALES))] + [[index,index2,0,i] for i in range(len(SHAPE_SCALES))]
+    with mp.Pool(processes=len(work_list)) as pool:
+        results = pool.starmap(train_and_test_models,work_list)
+        for loss, coords in zip(results, coords_list):
+            if loss<best_loss:
+                best_loss=loss
+    
+    return best_loss
+
+    
 
 def create_datasets():
     if not os.path.isdir("intermediate_data"): os.makedirs("intermediate_data")
@@ -378,7 +427,7 @@ def create_datasets():
 if __name__ == '__main__':
     create_datasets()
     step_counts = (int(len(pd.read_csv("intermediate_data/train.csv",usecols=['hours']))/128),int(len(pd.read_csv("intermediate_data/val.csv",usecols=['hours']))/128))
-    #step_counts = (20000,10000)
+    #step_counts = (20,10)
     print(step_counts)
     starts = [[2,0,0,0],[3,0,0,0],[4,0,0,0]]
     optimum = autotune(starts,SHAPES,EMBED_SIZES,LSTM_UNITS,SHAPE_SCALES,step_counts)
