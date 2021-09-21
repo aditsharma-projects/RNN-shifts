@@ -12,8 +12,13 @@ torch.set_num_threads(30)
 CHECKPOINT_DIR = 'torch/'
 CHECKPOINTS = CHECKPOINT_DIR+'model.pt'
 
-def chunk(frame,cap):
-    pass
+#takes in start and end coords and returns list of "chunked" coords of max length cap
+def chunk(start,end,cap):
+    out = []
+    for i in range(start,end+1,cap):
+        if(i+cap<=end): out.append((i,i+cap-1))
+        else: out.append((i,end))
+    return out
     
 class Variable_Dataset(Dataset):
     def __init__(self, sequence_file, coords_file, transform=None):
@@ -21,7 +26,9 @@ class Variable_Dataset(Dataset):
         include_fields = ['hours','avg_employees_7days','day_of_week','Lemployees']
         self.frame = pd.read_csv(sequence_file,usecols=include_fields).dropna()
         self.coords = pd.read_csv(coords_file).dropna()
-        self.coords = self.coords[self.coords['last_index']-self.coords['first_index']>1]
+        self.coords['chunked'] = self.coords.apply(lambda x: chunk(x.first_index,x.last_index,10),axis=1)
+        self.coords = self.coords.explode('chunked')
+        self.coords = self.coords[self.coords['chunked'][1]-self.coords['chunked'][0]>1]
 
     def __len__(self):
         return len(self.coords)
@@ -30,8 +37,8 @@ class Variable_Dataset(Dataset):
         if torch.is_tensor(idx):
             idx = idx.tolist()
 
-        start = int(self.coords.iloc[idx]['first_index'])
-        end = int(self.coords.iloc[idx]['last_index'])
+        start = int(self.coords.iloc[idx]['chunked'][0])
+        end = int(self.coords.iloc[idx]['chunked'][1])
         series = torch.Tensor(np.array(self.frame[start:end+1]['hours'].astype('float32')))
         if(len(series)<2):
             series = torch.Tensor(np.array([-1,-1,-1]))
