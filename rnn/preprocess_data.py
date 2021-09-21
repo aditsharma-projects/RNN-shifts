@@ -1,9 +1,9 @@
 import pandas as pd
 import numpy as np
 
-SET = "A"
+SET = "B"
 
-PATH = f'/export/storage_adgandhi/PBJhours_ML/Data/Intermediate/train_test_validation/full_5050{SET}_60.csv'
+PATH = f'/export/storage_adgandhi/PBJhours_ML/Data/Intermediate/Length60/full5050{SET}_sequences.csv'
 SAVE = f'/export/storage_adgandhi/PBJhours_ML/tf_data/50{SET}.csv'
 
 LAGGED_DAYS = 60

@@ -4,7 +4,17 @@ import pandas as pd
 from torch.utils.data import Dataset, DataLoader
 from torch.nn.utils.rnn import pack_sequence, pad_sequence, pack_padded_sequence, pad_packed_sequence
 import numpy as np
+import os
 
+#restrict to 30 cores
+torch.set_num_threads(30)
+
+CHECKPOINT_DIR = 'torch/'
+CHECKPOINTS = CHECKPOINT_DIR+'model.pt'
+
+def chunk(frame,cap):
+    pass
+    
 class Variable_Dataset(Dataset):
     def __init__(self, sequence_file, coords_file, transform=None):
        
@@ -63,17 +73,29 @@ class RNN(nn.Module):
 model = RNN(64)
 loss_function = nn.MSELoss()
 optimizer = torch.optim.SGD(model.parameters(), lr=0.1)
+
+if not os.path.isdir(CHECKPOINT_DIR): 
+    os.makedirs(CHECKPOINT_DIR)
+elif os.path.isfile(CHECKPOINTS):
+    checkpoint = torch.load(CHECKPOINTS)
+    model.load_state_dict(checkpoint['model_state_dict'])
+    optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+
 for epoch in range(1):
     for (idx,(x_padded, y_padded, x_lens, y_lens)) in enumerate(train_dataloader):
         model.zero_grad()
 
         predictions_padded = model(x_padded,x_lens)
         loss = loss_function(predictions_padded,y_padded)
-        print(f"Loss: {loss}  idx: {idx}")
+        print(f"Loss: {loss}  idx: {idx} of ~{500000}")
+        if idx%100==0:
+            torch.save({
+            'model_state_dict': model.state_dict(),
+            'optimizer_state_dict': optimizer.state_dict(),
+            }, CHECKPOINTS)
+            print(f"Saved {idx} batches of training")
         loss.backward()
         optimizer.step()
-        if idx+1%500==0:
-            break
 
 eval_dataloader = DataLoader(train_set, batch_size=1, shuffle=True, collate_fn=pad_collate)
 total_loss = 0
