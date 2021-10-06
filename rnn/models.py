@@ -1,4 +1,5 @@
 import tensorflow as tf
+import numpy as np
 
 LAGGED_DAYS=60
 embedded_idx = 0
