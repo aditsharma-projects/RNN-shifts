@@ -26,9 +26,9 @@ class Variable_Dataset(Dataset):
         include_fields = ['hours','avg_employees_7days','day_of_week','Lemployees']
         self.frame = pd.read_csv(sequence_file,usecols=include_fields).dropna()
         self.coords = pd.read_csv(coords_file).dropna()
-        self.coords['chunked'] = self.coords.apply(lambda x: chunk(x.first_index,x.last_index,10),axis=1)
+        self.coords['chunked'] = self.coords.apply(lambda x: chunk(x.first_index,x.last_index,100),axis=1)
         self.coords = self.coords.explode('chunked')
-        self.coords = self.coords[self.coords['chunked'][1]-self.coords['chunked'][0]>1]
+        #self.coords = self.coords[self.coords['chunked'][1]-self.coords['chunked'][0]>1]
 
     def __len__(self):
         return len(self.coords)

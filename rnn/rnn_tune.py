@@ -9,6 +9,7 @@ import getpass
 from random import randrange
 import preprocess_data as PREPROCESS
 from models import RNN, RNN_Conditioned
+import json
 
 tf.config.threading.set_intra_op_parallelism_threads(5)
 tf.config.threading.set_inter_op_parallelism_threads(5)
@@ -77,6 +78,7 @@ base_model_info = {
  'time_duration':-1,
  'Epochs':EPOCHS,
  'Columns':['prov_id','day_of_week','avg_employees_7days'],
+ 'Job Types':['CNA', 'LPN', 'RN'],            #Default should include all job types
  'LSTM type':"Unconditioned",
  'user':getpass.getuser(),
  'coordinates':[],
@@ -165,6 +167,9 @@ def train_and_test_models(step_counts,recurrence_length,lstm_units,dense_shape,e
         #Check if tested same run on same training set
         log_file = log_file[log_file['train_file']==TRAIN_PATH]
         log_file = log_file[log_file['last_modified']==(os.stat(TRAIN_PATH)).st_mtime]
+        # INSERT NEW BLOCK
+        #SHAPE = json.loads(logs.iloc[0]["FF model shape"])
+        # END NEW BLOCK
         log_file['coordinates'] = log_file['coordinates'].apply(hash_coordinates)
         if hash_coordinates(str(coordinates)) in log_file['coordinates'].unique():
             matching_trials = log_file.loc[log_file['coordinates']==hash_coordinates(str(coordinates))]
@@ -277,11 +282,7 @@ def autotune(starts,shape_ratios,embed_sizes,lstm_units,mult,step_counts):
                 
     return best_loss
 
-#Searches over optimum hyperparameters one axis at a time
-#SHAPES = [[1],[1,1],[1,1,1],[1,1,1,1],[4,1],[8,4,1],[16,8,4,1],[8,1],[16,8,1],[4,2,1,1]]
-#SHAPE_SCALES = [2,4,6,8]
-#EMBED_SIZES = [0]
-#LSTM_UNITS = [8,16,32,64,128,256]
+#Searches over optimum hyperparameters one axis at a time 
 def axis_tune(step_counts):
     best_loss = 1000
     print("Searching over LSTM UNITS")

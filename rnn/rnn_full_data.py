@@ -13,11 +13,11 @@ BATCH_SIZE = 128
 
 
 if SET == "A":
-  steps = 555919099/BATCH_SIZE
   PATH = '/export/storage_adgandhi/PBJhours_ML/tf_data/50A.csv'
+  steps = len(pd.read_csv(PATH,usecols=['hours']))/BATCH_SIZE
 elif SET == "B":
-  steps = 557000804/BATCH_SIZE
   PATH = '/export/storage_adgandhi/PBJhours_ML/tf_data/50B.csv'
+  steps = len(pd.read_csv(PATH,usecols=['hours']))/BATCH_SIZE
 
 
 LOG_PATH = '/export/storage_adgandhi/PBJhours_ML/Data/Logs/rnn_autotuning_history.csv'
@@ -63,7 +63,8 @@ def decay(epoch):
   else:
     return INITIAL_LEARNING_RATE/200
 
-if LSTM_UNITS == "Conditioned":
+#Bug???
+if LSTM_TYPE == "Conditioned":
   print("CONDITIONED... SUCCESS!")
   model = RNN_Conditioned(LAGGED_DAYS,LSTM_UNITS,SHAPE,0,1)
 else: model = RNN(LAGGED_DAYS,LSTM_UNITS,SHAPE,0,1)
